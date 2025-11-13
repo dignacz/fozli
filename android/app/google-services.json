@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "569516680175",
+    "project_id": "fozli-b9f2e",
+    "storage_bucket": "fozli-b9f2e.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:569516680175:android:dcc620493ee1b120624c1a",
+        "android_client_info": {
+          "package_name": "com.dignacz.fozli"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBngZOZRpsW9QUB5VoOmgtMG02DhWE2KvM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:569516680175:android:d998448401d94466624c1a",
+        "android_client_info": {
+          "package_name": "com.example.fozli"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBngZOZRpsW9QUB5VoOmgtMG02DhWE2KvM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
