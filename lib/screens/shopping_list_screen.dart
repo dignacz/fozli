@@ -132,7 +132,7 @@ class ShoppingListScreen extends StatelessWidget {
   Future<void> _editItem(BuildContext context, ShoppingListItem item) async {
   final nameController = TextEditingController(text: item.name);
   final quantityController = TextEditingController(text: item.quantity);
-  String selectedUnit = item.unit;
+  String selectedUnit = _shoppingUnits.contains(item.unit) ? item.unit : 'db';
 
   final result = await showDialog<bool>(
     context: context,

@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../models/recipe.dart';
 import '../models/shopping_list_item.dart';
+import '../models/cooking_log.dart';
 import '../utils/app_colors.dart';
 import '../screens/edit_recipe_screen.dart';
 
@@ -24,6 +25,41 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
     super.initState();
     _recipe = widget.recipe;
   }
+
+Future<void> _logCookedToday() async {
+  final userId = FirebaseAuth.instance.currentUser?.uid;
+  if (userId == null) return;
+
+  try {
+    final log = CookingLog(
+      id: '',
+      userId: userId,
+      recipeId: _recipe.id,
+      recipeName: _recipe.name,
+      cookedDate: DateTime.now(),
+      createdAt: DateTime.now(),
+    );
+
+    await FirebaseFirestore.instance
+        .collection('cookingLogs')
+        .add(log.toMap());
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Hozzáadva a naptárhoz!'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    }
+  } catch (e) {
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Hiba: $e')),
+      );
+    }
+  }
+}
 
 Future<void> _loadRecipe() async {
   setState(() => _isLoading = true);
@@ -226,6 +262,7 @@ Future<void> _loadRecipe() async {
                 ),
                 const SizedBox(height: 16),
 
+
                 // Instructions Card (if exists)
                 if (_recipe.instructions != null && _recipe.instructions!.isNotEmpty)
                   Card(
@@ -247,6 +284,22 @@ Future<void> _loadRecipe() async {
                       ),
                     ),
                   ),
+
+                   // Naptár
+const SizedBox(height: 16),
+SizedBox(
+  width: double.infinity,
+  child: ElevatedButton.icon(
+    onPressed: () => _logCookedToday(),
+    icon: const Icon(Icons.check_circle_outline),
+    label: const Text('Ma megfőztem ezt!'),
+    style: ElevatedButton.styleFrom(
+      backgroundColor: AppColors.lavender,
+      foregroundColor: Colors.white,
+      padding: const EdgeInsets.symmetric(vertical: 12),
+    ),
+  ),
+),
               ],
             ),
     );
