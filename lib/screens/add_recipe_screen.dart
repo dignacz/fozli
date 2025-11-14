@@ -1,8 +1,10 @@
+// screens/add_recipe_screen.dart
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../models/recipe.dart';
 import '../utils/app_colors.dart';
+import '../utils/recipe_categories.dart'; // Add this import
 
 class AddRecipeScreen extends StatefulWidget {
   const AddRecipeScreen({super.key});
@@ -17,6 +19,7 @@ class _AddRecipeScreenState extends State<AddRecipeScreen> {
   final _instructionsController = TextEditingController();
   final List<IngredientInput> _ingredients = [IngredientInput()];
   bool _isLoading = false;
+  String _selectedCategory = 'Főétel'; // Add this
 
   // Measurement units in Hungarian
   static const List<String> _measurementUnits = [
@@ -28,10 +31,11 @@ class _AddRecipeScreenState extends State<AddRecipeScreen> {
     'dl',
     'l',
     'evőkanál',
-    'kávéskanál',
+    'teáskanál',
     'csipet',
     'csomag',
     'doboz',
+    'ízlés szerint',
   ];
 
   void _addIngredient() {
@@ -47,7 +51,6 @@ class _AddRecipeScreenState extends State<AddRecipeScreen> {
       }
     });
   }
-
 
   Future<void> _saveRecipe() async {
     if (!_formKey.currentState!.validate()) return;
@@ -73,6 +76,7 @@ class _AddRecipeScreenState extends State<AddRecipeScreen> {
         id: '',
         userId: userId,
         name: _nameController.text.trim(),
+        category: _selectedCategory, // Add this
         ingredients: validIngredients
             .map((i) => Ingredient(
                   name: i.nameController.text.trim(),
@@ -131,6 +135,38 @@ class _AddRecipeScreenState extends State<AddRecipeScreen> {
                   return 'Kérlek add meg a recept nevét';
                 }
                 return null;
+              },
+            ),
+            const SizedBox(height: 16),
+
+            // Category Selector - ADD THIS
+            DropdownButtonFormField<String>(
+              value: _selectedCategory,
+              decoration: const InputDecoration(
+                labelText: 'Kategória',
+                border: OutlineInputBorder(),
+                prefixIcon: Icon(Icons.category),
+              ),
+              items: RecipeCategories.getCategoryNames().map((String category) {
+                final categoryData = RecipeCategories.getCategory(category);
+                return DropdownMenuItem<String>(
+                  value: category,
+                  child: Row(
+                    children: [
+                      Text(
+                        categoryData.emoji,
+                        style: const TextStyle(fontSize: 20),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(category),
+                    ],
+                  ),
+                );
+              }).toList(),
+              onChanged: (String? newValue) {
+                setState(() {
+                  _selectedCategory = newValue ?? 'Főétel';
+                });
               },
             ),
             const SizedBox(height: 24),

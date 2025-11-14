@@ -4,7 +4,7 @@ class Recipe {
   final String name;
   final List<Ingredient> ingredients;
   final String? instructions;
-  final String? imageUrl;
+  final String category;
   final DateTime createdAt;
 
   Recipe({
@@ -13,7 +13,7 @@ class Recipe {
     required this.name,
     required this.ingredients,
     this.instructions,
-    this.imageUrl,
+    required this.category,
     required this.createdAt,
   });
 
@@ -24,7 +24,7 @@ class Recipe {
       'name': name,
       'ingredients': ingredients.map((i) => i.toMap()).toList(),
       'instructions': instructions,
-      'imageUrl': imageUrl,
+      'category': category,
       'createdAt': createdAt.toIso8601String(),
     };
   }
@@ -40,7 +40,7 @@ class Recipe {
               .toList() ??
           [],
       instructions: map['instructions'],
-      imageUrl: map['imageUrl'],
+      category: map['category'] ?? 'Főétel',
       createdAt: DateTime.parse(map['createdAt'] ?? DateTime.now().toIso8601String()),
     );
   }

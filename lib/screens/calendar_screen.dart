@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 import '../models/cooking_log.dart';
 import '../models/recipe.dart';
 import '../utils/app_colors.dart';
+import '../utils/recipe_categories.dart'; // Add this import
 
 class CalendarScreen extends StatefulWidget {
   const CalendarScreen({super.key});
@@ -20,12 +21,34 @@ class _CalendarScreenState extends State<CalendarScreen> {
   DateTime _focusedDay = DateTime.now();
   DateTime? _selectedDay;
   Map<DateTime, List<CookingLog>> _events = {};
+  Map<String, Recipe> _recipesCache = {}; // Add recipe cache
 
   @override
   void initState() {
     super.initState();
     _selectedDay = _focusedDay;
     _loadEvents();
+    _loadRecipes(); // Load recipes for category display
+  }
+
+  Future<void> _loadRecipes() async {
+    final userId = FirebaseAuth.instance.currentUser?.uid;
+    if (userId == null) return;
+
+    final snapshot = await FirebaseFirestore.instance
+        .collection('recipes')
+        .where('userId', isEqualTo: userId)
+        .get();
+
+    final Map<String, Recipe> recipes = {};
+    for (var doc in snapshot.docs) {
+      final recipe = Recipe.fromMap(doc.id, doc.data());
+      recipes[recipe.id] = recipe;
+    }
+
+    setState(() {
+      _recipesCache = recipes;
+    });
   }
 
   Future<void> _loadEvents() async {
@@ -97,8 +120,32 @@ class _CalendarScreenState extends State<CalendarScreen> {
             itemCount: recipes.length,
             itemBuilder: (context, index) {
               final recipe = recipes[index];
+              final categoryData = RecipeCategories.getCategory(recipe.category);
+              
               return ListTile(
+                leading: CircleAvatar(
+                  backgroundColor: categoryData.color,
+                  child: Text(
+                    categoryData.emoji,
+                    style: const TextStyle(fontSize: 20),
+                  ),
+                ),
                 title: Text(recipe.name),
+                subtitle: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: categoryData.color.withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    recipe.category,
+                    style: TextStyle(
+                      color: categoryData.color,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
                 onTap: () => Navigator.pop(context, recipe),
               );
             },
@@ -260,13 +307,48 @@ class _CalendarScreenState extends State<CalendarScreen> {
       itemCount: events.length,
       itemBuilder: (context, index) {
         final log = events[index];
+        final recipe = _recipesCache[log.recipeId];
+        
+        // Get category info if recipe exists, otherwise use default
+        final categoryData = recipe != null 
+            ? RecipeCategories.getCategory(recipe.category)
+            : RecipeCategories.getCategory('Egyéb');
+
         return Card(
           child: ListTile(
-            leading: const Icon(Icons.restaurant, color: AppColors.coral),
+            leading: CircleAvatar(
+              backgroundColor: categoryData.color,
+              child: Text(
+                categoryData.emoji,
+                style: const TextStyle(fontSize: 20),
+              ),
+            ),
             title: Text(log.recipeName),
-            subtitle: Text(
-              DateFormat('HH:mm').format(log.createdAt),
-              style: TextStyle(color: Colors.grey[600]),
+            subtitle: Row(
+              children: [
+                if (recipe != null) ...[
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: categoryData.color.withOpacity(0.2),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      recipe.category,
+                      style: TextStyle(
+                        color: categoryData.color,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                ],
+                Text(
+                  DateFormat('HH:mm').format(log.createdAt),
+                  style: TextStyle(color: Colors.grey[600]),
+                ),
+              ],
             ),
             trailing: IconButton(
               icon: const Icon(Icons.delete_outline, color: Colors.red),

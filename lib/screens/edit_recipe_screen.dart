@@ -1,8 +1,10 @@
+// screens/edit_recipe_screen.dart
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../models/recipe.dart';
 import '../utils/app_colors.dart';
+import '../utils/recipe_categories.dart'; // Add this import
 
 class EditRecipeScreen extends StatefulWidget {
   final Recipe recipe;
@@ -18,6 +20,7 @@ class _EditRecipeScreenState extends State<EditRecipeScreen> {
   late TextEditingController _nameController;
   late TextEditingController _instructionsController;
   late List<IngredientInput> _ingredients;
+  late String _selectedCategory; // Add this
   bool _isLoading = false;
 
   static const List<String> _measurementUnits = [
@@ -29,10 +32,11 @@ class _EditRecipeScreenState extends State<EditRecipeScreen> {
     'dl',
     'l',
     'evőkanál',
-    'kávéskanál',
+    'teáskanál',
     'csipet',
     'csomag',
     'doboz',
+    'ízlés szerint',
   ];
 
   @override
@@ -40,6 +44,7 @@ class _EditRecipeScreenState extends State<EditRecipeScreen> {
     super.initState();
     _nameController = TextEditingController(text: widget.recipe.name);
     _instructionsController = TextEditingController(text: widget.recipe.instructions ?? '');
+    _selectedCategory = widget.recipe.category; // Initialize with current category
     
     // Pre-populate ingredients
     _ingredients = widget.recipe.ingredients.map((ingredient) {
@@ -65,7 +70,6 @@ class _EditRecipeScreenState extends State<EditRecipeScreen> {
     });
   }
 
-
   Future<void> _saveRecipe() async {
     if (!_formKey.currentState!.validate()) return;
 
@@ -90,6 +94,7 @@ class _EditRecipeScreenState extends State<EditRecipeScreen> {
         id: widget.recipe.id,
         userId: userId,
         name: _nameController.text.trim(),
+        category: _selectedCategory, // Add this
         ingredients: validIngredients
             .map((i) => Ingredient(
                   name: i.nameController.text.trim(),
@@ -151,6 +156,38 @@ class _EditRecipeScreenState extends State<EditRecipeScreen> {
                   return 'Kérlek add meg a recept nevét';
                 }
                 return null;
+              },
+            ),
+            const SizedBox(height: 16),
+
+            // Category Selector - ADD THIS
+            DropdownButtonFormField<String>(
+              value: _selectedCategory,
+              decoration: const InputDecoration(
+                labelText: 'Kategória',
+                border: OutlineInputBorder(),
+                prefixIcon: Icon(Icons.category),
+              ),
+              items: RecipeCategories.getCategoryNames().map((String category) {
+                final categoryData = RecipeCategories.getCategory(category);
+                return DropdownMenuItem<String>(
+                  value: category,
+                  child: Row(
+                    children: [
+                      Text(
+                        categoryData.emoji,
+                        style: const TextStyle(fontSize: 20),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(category),
+                    ],
+                  ),
+                );
+              }).toList(),
+              onChanged: (String? newValue) {
+                setState(() {
+                  _selectedCategory = newValue ?? 'Főétel';
+                });
               },
             ),
             const SizedBox(height: 24),

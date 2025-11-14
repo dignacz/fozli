@@ -1,41 +1,51 @@
+// screens/main_screen.dart
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../services/auth_service.dart';
+import 'dashboard_screen.dart';
 import 'recipe_list_screen.dart';
 import 'shopping_list_screen.dart';
 import 'calendar_screen.dart';
 import '../utils/app_colors.dart';
 
-class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key});
+class MainScreen extends StatefulWidget {
+  const MainScreen({super.key});
 
   @override
-  State<HomeScreen> createState() => _HomeScreenState();
+  State<MainScreen> createState() => _MainScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _MainScreenState extends State<MainScreen> {
   int _selectedIndex = 0;
 
-  final List<Widget> _screens = [
-    const RecipeListScreen(),
-    const ShoppingListScreen(),
-    const CalendarScreen(),
-  ];
+  void _onTabChanged(int index) {
+    setState(() {
+      _selectedIndex = index;
+    });
+  }
 
   final List<String> _titles = [
+    'Főzli',
     'Receptek',
     'Bevásárlólista',
-    'Naptár',
+    'Főzőnaptár',
   ];
 
   @override
   Widget build(BuildContext context) {
-    final user = FirebaseAuth.instance.currentUser;
     final authService = AuthService();
+
+    // Build screens list here so we can pass the callback
+    final screens = [
+      DashboardScreen(onNavigate: _onTabChanged), // Pass callback
+      const RecipeListScreen(),
+      const ShoppingListScreen(),
+      const CalendarScreen(),
+    ];
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(_titles[_selectedIndex]), // ← Fixed: now handles all 3 screens
+        title: Text(_titles[_selectedIndex]),
         backgroundColor: AppColors.coral,
         foregroundColor: Colors.white,
         actions: [
@@ -48,24 +58,25 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ],
       ),
-      body: _screens[_selectedIndex],
+      body: screens[_selectedIndex],
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _selectedIndex,
-        onTap: (index) {
-          setState(() {
-            _selectedIndex = index;
-          });
-        },
+        onTap: _onTabChanged,
         selectedItemColor: AppColors.coral,
         unselectedItemColor: Colors.grey,
+        type: BottomNavigationBarType.fixed,
         items: const [
+          BottomNavigationBarItem(
+            icon: Icon(Icons.home),
+            label: 'Főoldal',
+          ),
           BottomNavigationBarItem(
             icon: Icon(Icons.restaurant_menu),
             label: 'Receptek',
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.shopping_cart),
-            label: 'Bevásárlólista',
+            label: 'Lista',
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.calendar_today),
