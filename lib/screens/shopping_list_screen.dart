@@ -1,17 +1,18 @@
-//screens/shopping_list_screen.dart
+// screens/shopping_list_screen_updated.dart
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:file_picker/file_picker.dart';
 import 'dart:convert';
 import 'dart:io';
 import 'package:share_plus/share_plus.dart';
 import '../models/shopping_list_item.dart';
 import '../utils/app_colors.dart';
-import '../services/fozli_import_service.dart';
+import 'import_shopping_list_dialog.dart';
 
 class ShoppingListScreen extends StatefulWidget {
-  const ShoppingListScreen({super.key});
+  final bool isPremium; // Add this to track premium status
+
+  const ShoppingListScreen({super.key, this.isPremium = false});
 
   @override
   State<ShoppingListScreen> createState() => _ShoppingListScreenState();
@@ -19,29 +20,30 @@ class ShoppingListScreen extends StatefulWidget {
 
 class _ShoppingListScreenState extends State<ShoppingListScreen> {
   Map<String, dynamic> _convertTimestampsToStrings(Map<String, dynamic> data) {
-  final result = <String, dynamic>{};
-  
-  data.forEach((key, value) {
-    if (value is Timestamp) {
-      result[key] = value.toDate().toIso8601String();
-    } else if (value is List) {
-      result[key] = value.map((item) {
-        if (item is Map<String, dynamic>) {
-          return _convertTimestampsToStrings(item);
-        } else if (item is Timestamp) {
-          return item.toDate().toIso8601String();
-        }
-        return item;
-      }).toList();
-    } else if (value is Map<String, dynamic>) {
-      result[key] = _convertTimestampsToStrings(value);
-    } else {
-      result[key] = value;
-    }
-  });
-  
-  return result;
-}
+    final result = <String, dynamic>{};
+    
+    data.forEach((key, value) {
+      if (value is Timestamp) {
+        result[key] = value.toDate().toIso8601String();
+      } else if (value is List) {
+        result[key] = value.map((item) {
+          if (item is Map<String, dynamic>) {
+            return _convertTimestampsToStrings(item);
+          } else if (item is Timestamp) {
+            return item.toDate().toIso8601String();
+          }
+          return item;
+        }).toList();
+      } else if (value is Map<String, dynamic>) {
+        result[key] = _convertTimestampsToStrings(value);
+      } else {
+        result[key] = value;
+      }
+    });
+    
+    return result;
+  }
+
   static const List<String> _shoppingUnits = [
     'db',
     'csomag',
@@ -52,101 +54,6 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
     'dl',
     'ml',
   ];
-
-  Future<void> _importFozliFile() async {
-  try {
-    final result = await FilePicker.platform.pickFiles(
-      type: FileType.any,
-    );
-
-    if (result == null) return;
-
-    final filePath = result.files.single.path!;
-    if (!filePath.endsWith('.fozli')) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Kérlek válassz egy .fozli fájlt!'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-      return;
-    }
-
-    if (mounted) {
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (context) => const Center(
-          child: CircularProgressIndicator(color: AppColors.coral),
-        ),
-      );
-    }
-
-    final importResult = await FozliImportService.importFozliFile(filePath);
-
-    if (mounted) {
-      Navigator.pop(context);
-
-      // Check if importing wrong type
-      if (importResult.success && importResult.importedType == 'recipe') {
-        showDialog(
-          context: context,
-          builder: (context) => AlertDialog(
-            title: const Row(
-              children: [
-                Icon(Icons.info, color: Colors.orange),
-                SizedBox(width: 12),
-                Text('Recept importálva'),
-              ],
-            ),
-            content: const Text(
-              'Ez egy recept volt, ezért a Receptek fülön lett hozzáadva.',
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('Rendben'),
-              ),
-            ],
-          ),
-        );
-        return;
-      }
-
-      showDialog(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: Row(
-            children: [
-              Icon(
-                importResult.success ? Icons.check_circle : Icons.error,
-                color: importResult.success ? Colors.green : Colors.red,
-              ),
-              const SizedBox(width: 12),
-              Text(importResult.success ? 'Sikeres!' : 'Hiba'),
-            ],
-          ),
-          content: Text(importResult.message),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Rendben'),
-            ),
-          ],
-        ),
-      );
-    }
-  } catch (e) {
-    if (mounted) {
-      Navigator.pop(context); // Close loading dialog
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Hiba: $e')),
-      );
-    }
-  }
-}
 
   Future<void> _showShareOptions(List<ShoppingListItem> items) async {
     showModalBottomSheet(
@@ -227,51 +134,51 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
   }
 
   Future<void> _shareAsFozli(List<ShoppingListItem> items) async {
-  try {
-    final itemsData = items.map((item) {
-      final data = item.toMap();
-      data.remove('userId');
-      data.remove('id');
+    try {
+      final itemsData = items.map((item) {
+        final data = item.toMap();
+        data.remove('userId');
+        data.remove('id');
+        
+        // Convert all Timestamps to ISO8601 strings
+        return _convertTimestampsToStrings(data);
+      }).toList();
       
-      // Convert all Timestamps to ISO8601 strings
-      return _convertTimestampsToStrings(data);
-    }).toList();
-    
-    final jsonData = jsonEncode({
-      'type': 'shopping_list',
-      'version': '1.0',
-      'items': itemsData,
-      'exportedAt': DateTime.now().toIso8601String(),
-    });
+      final jsonData = jsonEncode({
+        'type': 'shopping_list',
+        'version': '1.0',
+        'items': itemsData,
+        'exportedAt': DateTime.now().toIso8601String(),
+      });
 
-    final tempDir = Directory.systemTemp;
-    final fileName = 'bevasarlolista_${DateTime.now().millisecondsSinceEpoch}.fozli';
-    final filePath = '${tempDir.path}/$fileName';
-    final file = File(filePath);
-    await file.writeAsString(jsonData);
+      final tempDir = Directory.systemTemp;
+      final fileName = 'bevasarlolista_${DateTime.now().millisecondsSinceEpoch}.fozli';
+      final filePath = '${tempDir.path}/$fileName';
+      final file = File(filePath);
+      await file.writeAsString(jsonData);
 
-    await Share.shareXFiles(
-      [XFile(filePath)],
-      subject: 'Bevásárlólista',
-      text: 'Főzli bevásárlólista',
-    );
-
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Lista exportálva!'),
-          backgroundColor: Colors.green,
-        ),
+      await Share.shareXFiles(
+        [XFile(filePath)],
+        subject: 'Bevásárlólista',
+        text: 'Főzli bevásárlólista',
       );
-    }
-  } catch (e) {
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Hiba: $e')),
-      );
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Lista exportálva!'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Hiba: $e')),
+        );
+      }
     }
   }
-}
 
   Future<void> _addItem(BuildContext context) async {
     final nameController = TextEditingController();
@@ -549,184 +456,186 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
   }
 
   @override
-Widget build(BuildContext context) {
-  final userId = FirebaseAuth.instance.currentUser?.uid;
+  Widget build(BuildContext context) {
+    final userId = FirebaseAuth.instance.currentUser?.uid;
 
-  if (userId == null) {
-    return const Center(child: Text('Nincs bejelentkezve'));
-  }
+    if (userId == null) {
+      return const Center(child: Text('Nincs bejelentkezve'));
+    }
 
-  return Scaffold(
-    body: Column(
-      children: [
-        // Always visible import and share buttons
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-          decoration: BoxDecoration(
-            color: Colors.grey[100],
-            border: Border(bottom: BorderSide(color: Colors.grey[300]!)),
-          ),
-          child: StreamBuilder<QuerySnapshot>(
-            stream: FirebaseFirestore.instance
-                .collection('shoppingList')
-                .where('userId', isEqualTo: userId)
-                .snapshots(),
-            builder: (context, snapshot) {
-              final items = snapshot.hasData
-                  ? snapshot.data!.docs
-                      .map((doc) => ShoppingListItem.fromMap(
-                            doc.id,
-                            doc.data() as Map<String, dynamic>,
-                          ))
-                      .toList()
-                  : <ShoppingListItem>[];
-              
-              final hasCheckedItems = items.any((item) => item.checked);
-              final hasItems = items.isNotEmpty;
+    return Scaffold(
+      body: Column(
+        children: [
+          // Always visible import and share buttons
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+              color: Colors.grey[100],
+              border: Border(bottom: BorderSide(color: Colors.grey[300]!)),
+            ),
+            child: StreamBuilder<QuerySnapshot>(
+              stream: FirebaseFirestore.instance
+                  .collection('shoppingList')
+                  .where('userId', isEqualTo: userId)
+                  .snapshots(),
+              builder: (context, snapshot) {
+                final items = snapshot.hasData
+                    ? snapshot.data!.docs
+                        .map((doc) => ShoppingListItem.fromMap(
+                              doc.id,
+                              doc.data() as Map<String, dynamic>,
+                            ))
+                        .toList()
+                    : <ShoppingListItem>[];
+                
+                final hasCheckedItems = items.any((item) => item.checked);
+                final hasItems = items.isNotEmpty;
 
-              return Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  TextButton.icon(
-                    onPressed: _importFozliFile,
-                    icon: const Icon(Icons.upload_file, size: 20),
-                    label: const Text('Importálás'),
-                    style: TextButton.styleFrom(foregroundColor: AppColors.coral),
-                  ),
-                  if (hasItems)
+                return Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
                     TextButton.icon(
-                      onPressed: () => _showShareOptions(items),
-                      icon: const Icon(Icons.share, size: 20),
-                      label: const Text('Megosztás'),
+                      onPressed: () {
+                        ImportShoppingListDialog.show(context, isPremium: widget.isPremium);
+                      },
+                      icon: const Icon(Icons.upload_file, size: 20),
+                      label: const Text('Importálás'),
                       style: TextButton.styleFrom(foregroundColor: AppColors.coral),
                     ),
-                  if (hasCheckedItems)
-                    TextButton.icon(
-                      onPressed: () => _clearCheckedItems(context, userId),
-                      icon: const Icon(Icons.delete_sweep, size: 20),
-                      label: const Text('Törlés'),
-                      style: TextButton.styleFrom(foregroundColor: AppColors.coral),
-                    ),
-                ],
-              );
-            },
-          ),
-        ),
-        // Main content area
-        Expanded(
-          child: StreamBuilder<QuerySnapshot>(
-            stream: FirebaseFirestore.instance
-                .collection('shoppingList')
-                .where('userId', isEqualTo: userId)
-                .snapshots(),
-            builder: (context, snapshot) {
-              if (snapshot.hasError) {
-                return Center(child: Text('Hiba: ${snapshot.error}'));
-              }
-
-              if (snapshot.connectionState == ConnectionState.waiting) {
-                return const Center(child: CircularProgressIndicator());
-              }
-
-              final items = snapshot.data!.docs
-                  .map((doc) => ShoppingListItem.fromMap(
-                        doc.id,
-                        doc.data() as Map<String, dynamic>,
-                      ))
-                  .toList();
-
-              if (items.isEmpty) {
-                return Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(
-                        Icons.shopping_cart,
-                        size: 80,
-                        color: Colors.grey[300],
+                    if (hasItems)
+                      TextButton.icon(
+                        onPressed: () => _showShareOptions(items),
+                        icon: const Icon(Icons.share, size: 20),
+                        label: const Text('Megosztás'),
+                        style: TextButton.styleFrom(foregroundColor: AppColors.coral),
                       ),
-                      const SizedBox(height: 16),
-                      Text(
-                        'A bevásárlólista üres',
-                        style: TextStyle(
-                          fontSize: 18,
-                          color: Colors.grey[600],
-                        ),
+                    if (hasCheckedItems)
+                      TextButton.icon(
+                        onPressed: () => _clearCheckedItems(context, userId),
+                        icon: const Icon(Icons.delete_sweep, size: 20),
+                        label: const Text('Törlés'),
+                        style: TextButton.styleFrom(foregroundColor: AppColors.coral),
                       ),
-                      const SizedBox(height: 8),
-                      Text(
-                        'Adj hozzá tételeket vagy használd a "Listához" gombot a recepteknél!',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(color: Colors.grey[500]),
-                      ),
-                    ],
-                  ),
+                  ],
                 );
-              }
+              },
+            ),
+          ),
+          // Main content area
+          Expanded(
+            child: StreamBuilder<QuerySnapshot>(
+              stream: FirebaseFirestore.instance
+                  .collection('shoppingList')
+                  .where('userId', isEqualTo: userId)
+                  .snapshots(),
+              builder: (context, snapshot) {
+                if (snapshot.hasError) {
+                  return Center(child: Text('Hiba: ${snapshot.error}'));
+                }
 
-              return ListView.builder(
-                padding: const EdgeInsets.all(8),
-                itemCount: items.length,
-                itemBuilder: (context, index) {
-                  final item = items[index];
-                  return Dismissible(
-                    key: Key(item.id),
-                    background: Container(
-                      color: Colors.red,
-                      alignment: Alignment.centerRight,
-                      padding: const EdgeInsets.only(right: 16),
-                      child: const Icon(Icons.delete, color: Colors.white),
-                    ),
-                    direction: DismissDirection.endToStart,
-                    onDismissed: (_) => _deleteItem(item.id),
-                    child: Card(
-                      margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
-                      child: ListTile(
-                        leading: Checkbox(
-                          value: item.checked,
-                          onChanged: (_) => _toggleItem(item),
-                          activeColor: AppColors.coral,
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+
+                final items = snapshot.data!.docs
+                    .map((doc) => ShoppingListItem.fromMap(
+                          doc.id,
+                          doc.data() as Map<String, dynamic>,
+                        ))
+                    .toList();
+
+                if (items.isEmpty) {
+                  return Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.shopping_cart,
+                          size: 80,
+                          color: Colors.grey[300],
                         ),
-                        title: Text(
-                          item.name,
+                        const SizedBox(height: 16),
+                        Text(
+                          'A bevásárlólista üres',
                           style: TextStyle(
-                            decoration: item.checked
-                                ? TextDecoration.lineThrough
-                                : null,
-                            color: item.checked ? Colors.grey : null,
+                            fontSize: 18,
+                            color: Colors.grey[600],
                           ),
                         ),
-                        subtitle: item.quantity.isNotEmpty
-                            ? Text(
-                                '${item.quantity} ${item.unit}',
-                                style: TextStyle(
-                                  color: item.checked
-                                      ? Colors.grey[400]
-                                      : Colors.grey[600],
-                                ),
-                              )
-                            : null,
-                        trailing: IconButton(
-                          icon: const Icon(Icons.edit, size: 20),
-                          onPressed: () => _editItem(context, item),
-                          color: AppColors.coral,
+                        const SizedBox(height: 8),
+                        Text(
+                          'Adj hozzá tételeket vagy használd a "Listához" gombot a recepteknél!',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(color: Colors.grey[500]),
                         ),
-                        onTap: () => _toggleItem(item),
-                      ),
+                      ],
                     ),
                   );
-                },
-              );
-            },
+                }
+
+                return ListView.builder(
+                  padding: const EdgeInsets.all(8),
+                  itemCount: items.length,
+                  itemBuilder: (context, index) {
+                    final item = items[index];
+                    return Dismissible(
+                      key: Key(item.id),
+                      background: Container(
+                        color: Colors.red,
+                        alignment: Alignment.centerRight,
+                        padding: const EdgeInsets.only(right: 16),
+                        child: const Icon(Icons.delete, color: Colors.white),
+                      ),
+                      direction: DismissDirection.endToStart,
+                      onDismissed: (_) => _deleteItem(item.id),
+                      child: Card(
+                        margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+                        child: ListTile(
+                          leading: Checkbox(
+                            value: item.checked,
+                            onChanged: (_) => _toggleItem(item),
+                            activeColor: AppColors.coral,
+                          ),
+                          title: Text(
+                            item.name,
+                            style: TextStyle(
+                              decoration: item.checked
+                                  ? TextDecoration.lineThrough
+                                  : null,
+                              color: item.checked ? Colors.grey : null,
+                            ),
+                          ),
+                          subtitle: item.quantity.isNotEmpty
+                              ? Text(
+                                  '${item.quantity} ${item.unit}',
+                                  style: TextStyle(
+                                    color: item.checked
+                                        ? Colors.grey[400]
+                                        : Colors.grey[600],
+                                  ),
+                                )
+                              : null,
+                          trailing: IconButton(
+                            icon: const Icon(Icons.edit, size: 20),
+                            onPressed: () => _editItem(context, item),
+                            color: AppColors.coral,
+                          ),
+                          onTap: () => _toggleItem(item),
+                        ),
+                      ),
+                    );
+                  },
+                );
+              },
+            ),
           ),
-        ),
-      ],
-    ),
-    floatingActionButton: FloatingActionButton(
-      onPressed: () => _addItem(context),
-      backgroundColor: AppColors.coral,
-      child: const Icon(Icons.add, color: Colors.white),
-    ),
-  );
-}
+        ],
+      ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () => _addItem(context),
+        backgroundColor: AppColors.coral,
+        child: const Icon(Icons.add, color: Colors.white),
+      ),
+    );
+  }
 }

@@ -1,10 +1,11 @@
 // screens/add_recipe_screen.dart
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../models/recipe.dart';
 import '../utils/app_colors.dart';
-import '../utils/recipe_categories.dart'; // Add this import
+import '../utils/recipe_categories.dart';
 
 class AddRecipeScreen extends StatefulWidget {
   const AddRecipeScreen({super.key});
@@ -17,9 +18,11 @@ class _AddRecipeScreenState extends State<AddRecipeScreen> {
   final _formKey = GlobalKey<FormState>();
   final _nameController = TextEditingController();
   final _instructionsController = TextEditingController();
+  final _imageUrlController = TextEditingController();
+  final _cookingTimeController = TextEditingController();
   final List<IngredientInput> _ingredients = [IngredientInput()];
   bool _isLoading = false;
-  String _selectedCategory = 'Főétel'; // Add this
+  String _selectedCategory = 'Főétel';
 
   // Measurement units in Hungarian
   static const List<String> _measurementUnits = [
@@ -30,11 +33,12 @@ class _AddRecipeScreenState extends State<AddRecipeScreen> {
     'ml',
     'dl',
     'l',
-    'evőkanál',
-    'teáskanál',
+    'ek',
+    'tk',
     'csipet',
     'csomag',
     'doboz',
+    'gerezd',
     'ízlés szerint',
   ];
 
@@ -72,11 +76,20 @@ class _AddRecipeScreenState extends State<AddRecipeScreen> {
       final userId = FirebaseAuth.instance.currentUser?.uid;
       if (userId == null) throw Exception('Nincs bejelentkezve');
 
+      // Parse cooking time
+      int? cookingTime;
+      if (_cookingTimeController.text.isNotEmpty) {
+        cookingTime = int.tryParse(_cookingTimeController.text);
+        if (cookingTime != null && cookingTime < 0) {
+          cookingTime = null;
+        }
+      }
+
       final recipe = Recipe(
         id: '',
         userId: userId,
         name: _nameController.text.trim(),
-        category: _selectedCategory, // Add this
+        category: _selectedCategory,
         ingredients: validIngredients
             .map((i) => Ingredient(
                   name: i.nameController.text.trim(),
@@ -87,6 +100,10 @@ class _AddRecipeScreenState extends State<AddRecipeScreen> {
         instructions: _instructionsController.text.trim().isEmpty
             ? null
             : _instructionsController.text.trim(),
+        imageUrl: _imageUrlController.text.trim().isEmpty
+            ? null
+            : _imageUrlController.text.trim(),
+        cookingTimeMinutes: cookingTime,
         createdAt: DateTime.now(),
       );
 
@@ -139,7 +156,7 @@ class _AddRecipeScreenState extends State<AddRecipeScreen> {
             ),
             const SizedBox(height: 16),
 
-            // Category Selector - ADD THIS
+            // Category Selector
             DropdownButtonFormField<String>(
               value: _selectedCategory,
               decoration: const InputDecoration(
@@ -167,6 +184,51 @@ class _AddRecipeScreenState extends State<AddRecipeScreen> {
                 setState(() {
                   _selectedCategory = newValue ?? 'Főétel';
                 });
+              },
+            ),
+            const SizedBox(height: 16),
+
+            // Image URL
+            TextFormField(
+              controller: _imageUrlController,
+              decoration: const InputDecoration(
+                labelText: 'Kép URL (opcionális)',
+                border: OutlineInputBorder(),
+                prefixIcon: Icon(Icons.image),
+                hintText: 'https://...',
+              ),
+              keyboardType: TextInputType.url,
+              validator: (value) {
+                if (value != null && value.isNotEmpty) {
+                  final uri = Uri.tryParse(value);
+                  if (uri == null || !uri.hasScheme) {
+                    return 'Érvénytelen URL formátum';
+                  }
+                }
+                return null;
+              },
+            ),
+            const SizedBox(height: 16),
+
+            // Cooking Time
+            TextFormField(
+              controller: _cookingTimeController,
+              decoration: const InputDecoration(
+                labelText: 'Elkészítési idő (perc, opcionális)',
+                border: OutlineInputBorder(),
+                prefixIcon: Icon(Icons.timer),
+                hintText: '30',
+              ),
+              keyboardType: TextInputType.number,
+              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+              validator: (value) {
+                if (value != null && value.isNotEmpty) {
+                  final minutes = int.tryParse(value);
+                  if (minutes == null || minutes < 0) {
+                    return 'Érvénytelen idő';
+                  }
+                }
+                return null;
               },
             ),
             const SizedBox(height: 24),
@@ -316,6 +378,8 @@ class _AddRecipeScreenState extends State<AddRecipeScreen> {
   void dispose() {
     _nameController.dispose();
     _instructionsController.dispose();
+    _imageUrlController.dispose();
+    _cookingTimeController.dispose();
     for (var ingredient in _ingredients) {
       ingredient.dispose();
     }

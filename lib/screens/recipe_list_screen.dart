@@ -3,13 +3,12 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:file_picker/file_picker.dart';
 import '../models/recipe.dart';
 import 'add_recipe_screen.dart';
 import 'recipe_detail_screen.dart';
+import 'import_recipe_dialog.dart';
 import '../utils/app_colors.dart';
 import '../utils/recipe_categories.dart';
-import '../services/fozli_import_service.dart';
 
 enum SortOption {
   alphabetical,
@@ -17,7 +16,9 @@ enum SortOption {
 }
 
 class RecipeListScreen extends StatefulWidget {
-  const RecipeListScreen({super.key});
+  final bool isPremium; // Add this to track premium status
+
+  const RecipeListScreen({super.key, this.isPremium = false});
 
   @override
   State<RecipeListScreen> createState() => _RecipeListScreenState();
@@ -48,137 +49,6 @@ class _RecipeListScreenState extends State<RecipeListScreen> {
     });
   }
 
-  Future<void> _importFozliFile() async {
-  try {
-    final result = await FilePicker.platform.pickFiles(
-      type: FileType.any,
-    );
-
-    if (result == null) return;
-
-    final filePath = result.files.single.path!;
-    if (!filePath.endsWith('.fozli')) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Kérlek válassz egy .fozli fájlt!'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-      return;
-    }
-
-    if (mounted) {
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (context) => const Center(
-          child: CircularProgressIndicator(color: AppColors.coral),
-        ),
-      );
-    }
-
-    final importResult = await FozliImportService.importFozliFile(filePath);
-
-    if (mounted) {
-      Navigator.pop(context);
-
-      // Check if importing wrong type
-      if (importResult.success && importResult.importedType == 'shopping_list') {
-        showDialog(
-          context: context,
-          builder: (context) => AlertDialog(
-            title: const Row(
-              children: [
-                Icon(Icons.info, color: Colors.orange),
-                SizedBox(width: 12),
-                Text('Bevásárlólista importálva'),
-              ],
-            ),
-            content: const Text(
-              'Ez egy bevásárlólista volt, ezért a Bevásárlólista fülön lett hozzáadva.',
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('Rendben'),
-              ),
-            ],
-          ),
-        );
-        return;
-      }
-
-      showDialog(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: Row(
-            children: [
-              Icon(
-                importResult.success ? Icons.check_circle : Icons.error,
-                color: importResult.success ? Colors.green : Colors.red,
-              ),
-              const SizedBox(width: 12),
-              Text(importResult.success ? 'Sikeres!' : 'Hiba'),
-            ],
-          ),
-          content: Text(importResult.message),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.pop(context);
-                // Navigate to detail page if import was successful
-                if (importResult.success && importResult.importedId != null) {
-                  _navigateToImportedRecipe(importResult.importedId!);
-                }
-              },
-              child: Text(importResult.success ? 'Megnézem' : 'Rendben'),
-            ),
-            if (importResult.success)
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('Bezárás'),
-              ),
-          ],
-        ),
-      );
-    }
-  } catch (e) {
-    if (mounted) {
-      Navigator.pop(context); // Close loading dialog
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Hiba: $e')),
-      );
-    }
-  }
-}
-
-Future<void> _navigateToImportedRecipe(String recipeId) async {
-  try {
-    final doc = await FirebaseFirestore.instance
-        .collection('recipes')
-        .doc(recipeId)
-        .get();
-
-    if (doc.exists && mounted) {
-      final recipe = Recipe.fromMap(doc.id, doc.data() as Map<String, dynamic>);
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (context) => RecipeDetailScreen(recipe: recipe),
-        ),
-      );
-    }
-  } catch (e) {
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Hiba: $e')),
-      );
-    }
-  }
-}
-
   List<Recipe> _sortRecipes(List<Recipe> recipes) {
     final sortedRecipes = List<Recipe>.from(recipes);
     
@@ -196,39 +66,41 @@ Future<void> _navigateToImportedRecipe(String recipeId) async {
   }
 
   @override
-Widget build(BuildContext context) {
-  final userId = FirebaseAuth.instance.currentUser?.uid;
+  Widget build(BuildContext context) {
+    final userId = FirebaseAuth.instance.currentUser?.uid;
 
-  if (userId == null) {
-    return const Center(child: Text('Nincs bejelentkezve'));
-  }
+    if (userId == null) {
+      return const Center(child: Text('Nincs bejelentkezve'));
+    }
 
-  return Scaffold(
-    body: Column(
-      children: [
-        // Import button - always visible
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          decoration: BoxDecoration(
-            color: Colors.grey[100],
-            border: Border(bottom: BorderSide(color: Colors.grey[300]!)),
-          ),
-          child: Row(
-            children: [
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: _importFozliFile,
-                  icon: const Icon(Icons.upload_file, size: 20),
-                  label: const Text('Importálás'),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: AppColors.coral,
-                    side: const BorderSide(color: AppColors.coral),
+    return Scaffold(
+      body: Column(
+        children: [
+          // Import button - always visible
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            decoration: BoxDecoration(
+              color: Colors.grey[100],
+              border: Border(bottom: BorderSide(color: Colors.grey[300]!)),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () {
+                      ImportRecipeDialog.show(context, isPremium: widget.isPremium);
+                    },
+                    icon: const Icon(Icons.upload_file, size: 20),
+                    label: const Text('Importálás'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: AppColors.coral,
+                      side: const BorderSide(color: AppColors.coral),
+                    ),
                   ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
-        ),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             decoration: BoxDecoration(
@@ -442,13 +314,32 @@ Widget build(BuildContext context) {
     return Card(
       margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
       child: ListTile(
-        leading: CircleAvatar(
-          backgroundColor: categoryData.color,
-          child: Text(
-            categoryData.emoji,
-            style: const TextStyle(fontSize: 24),
-          ),
-        ),
+        leading: recipe.imageUrl != null
+            ? ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: Image.network(
+                  recipe.imageUrl!,
+                  width: 56,
+                  height: 56,
+                  fit: BoxFit.cover,
+                  errorBuilder: (context, error, stackTrace) {
+                    return CircleAvatar(
+                      backgroundColor: categoryData.color,
+                      child: Text(
+                        categoryData.emoji,
+                        style: const TextStyle(fontSize: 24),
+                      ),
+                    );
+                  },
+                ),
+              )
+            : CircleAvatar(
+                backgroundColor: categoryData.color,
+                child: Text(
+                  categoryData.emoji,
+                  style: const TextStyle(fontSize: 24),
+                ),
+              ),
         title: Text(
           recipe.name,
           style: const TextStyle(fontWeight: FontWeight.bold),
@@ -478,6 +369,13 @@ Widget build(BuildContext context) {
               '• ${recipe.ingredients.length} hozzávaló',
               style: TextStyle(color: Colors.grey[600]),
             ),
+            if (recipe.cookingTimeMinutes != null) ...[
+              const SizedBox(width: 8),
+              Text(
+                '• ${recipe.cookingTimeMinutes} perc',
+                style: TextStyle(color: Colors.grey[600]),
+              ),
+            ],
           ],
         ),
         trailing: const Icon(Icons.chevron_right),
