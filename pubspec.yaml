@@ -43,6 +43,7 @@ dependencies:
   html: ^0.15.4
   image_picker: ^1.0.7
   flutter_dotenv: ^6.0.0
+  html_unescape: ^2.0.0
 
   flutter_localizations:
     sdk: flutter

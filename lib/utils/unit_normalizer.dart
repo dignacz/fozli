@@ -74,14 +74,17 @@ class UnitNormalizer {
     'ízlés szerint': 'ízlés szerint',
   };
 
-  static String normalize(String rawUnit) {
-    if (rawUnit.isEmpty) return 'db';
+  // Make it explicitly static and non-nullable
+  static String normalize(String? rawUnit) {
+    // Handle null or empty
+    if (rawUnit == null || rawUnit.isEmpty) return 'db';
 
     final lower = rawUnit.toLowerCase().trim();
 
     // Exact match first
-    if (unitMap.containsKey(lower)) {
-      return unitMap[lower]!;
+    final exactMatch = unitMap[lower];
+    if (exactMatch != null) {
+      return exactMatch;
     }
 
     // Partial match (for variations)

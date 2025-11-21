@@ -8,6 +8,7 @@ import '../services/url_recipe_import_service.dart';
 import '../services/ai_import_service.dart';
 import '../utils/app_colors.dart';
 import 'recipe_detail_screen.dart';
+import 'add_recipe_screen.dart';
 
 class ImportRecipeDialog {
   static Future<void> show(
@@ -61,6 +62,45 @@ class ImportRecipeSheet extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 16),
+
+            // ✨ NEW: Create recipe option
+          ListTile(
+            leading: Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: AppColors.coral.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Icon(Icons.edit, color: AppColors.coral),
+            ),
+            title: const Text('Új recept létrehozása'),
+            subtitle: const Text('Írj be egy saját receptet'),
+            onTap: () {
+              Navigator.pop(context);
+              Navigator.push(
+                rootContext,
+                MaterialPageRoute(
+                  builder: (context) => const AddRecipeScreen(),
+                ),
+              );
+            },
+          ),
+          
+          const Divider(height: 32),
+          
+          // Import section header
+          Padding(
+            padding: const EdgeInsets.only(left: 16, bottom: 8),
+            child: Text(
+              'IMPORTÁLÁS',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+                color: Colors.grey[600],
+                letterSpacing: 1.2,
+              ),
+            ),
+          ),
 
             // 📁 .fozli file import
             ListTile(

@@ -1,6 +1,7 @@
 // models/recipe.dart
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../utils/unit_normalizer.dart';
+import 'package:html_unescape/html_unescape.dart';
 
 class Recipe {
   final String id;
@@ -24,6 +25,9 @@ class Recipe {
     this.imageUrl,
     this.cookingTimeMinutes,
   });
+
+//HTML ENCODING
+  static final _htmlUnescape = HtmlUnescape();
 
   // Convert Recipe to Map for Firestore
   Map<String, dynamic> toMap() {
@@ -84,50 +88,94 @@ class Recipe {
   }
 
   // Create from schema.org/Recipe format
-  factory Recipe.fromSchemaOrg(String userId, Map<String, dynamic> schemaData) {
-    List<Ingredient> ingredients = [];
+  // Replace the entire fromSchemaOrg factory method in recipe.dart:
 
-    final rawIngredients = schemaData['recipeIngredient'];
-    final ingredientList = rawIngredients is List ? rawIngredients : [];
+factory Recipe.fromSchemaOrg(String userId, Map<String, dynamic> schemaData) {
+  List<Ingredient> ingredients = [];
 
-    ingredients = ingredientList.map((item) {
-      final text = item.toString().trim();
-      final String lower = text.toLowerCase();
+  // Try multiple possible ingredient fields
+  final rawIngredients = schemaData['recipeIngredient'] ?? 
+                         schemaData['ingredients'] ??
+                         schemaData['ingredient'];
 
-      // Check for "ízlés szerint"
-      if (lower.contains('ízlés szerint')) {
-        final name = text.replaceAll(RegExp(r'ízlés szerint', caseSensitive: false), '').trim();
-        return Ingredient(
-          quantity: '',
-          unit: 'ízlés szerint',
-          name: name,
-        );
+  if (rawIngredients != null) {
+    List<String> ingredientStrings = [];
+
+    // Convert whatever format to List<String>
+    if (rawIngredients is String) {
+      // Single string - split by newlines or commas
+      ingredientStrings = rawIngredients
+          .split(RegExp(r'\n|,'))
+          .where((line) => line.trim().isNotEmpty)
+          .toList();
+    } 
+    else if (rawIngredients is List) {
+      // It's a list - but items might be strings, maps, or mixed
+      for (var item in rawIngredients) {
+        if (item is String) {
+          ingredientStrings.add(item);
+        } else if (item is Map) {
+          // Try to extract text from map (some sites do this)
+          final text = item['text'] ?? item['name'] ?? item['ingredient'] ?? item.toString();
+          ingredientStrings.add(text.toString());
+        } else {
+          ingredientStrings.add(item.toString());
+        }
+      }
+    }
+    else if (rawIngredients is Map) {
+      // Single map object
+      final text = rawIngredients['text'] ?? rawIngredients['name'] ?? rawIngredients.toString();
+      ingredientStrings.add(text.toString());
+    }
+
+    // Now parse all ingredient strings
+    ingredients = ingredientStrings.map((text) {
+      final trimmed = text.trim();
+      if (trimmed.isEmpty) return null;
+
+      final String lower = trimmed.toLowerCase();
+
+      // Handle "ízlés szerint" pattern
+      if (lower.contains('ízlés szerint') && !RegExp(r'^\d').hasMatch(trimmed)) {
+        final name = trimmed.replaceAll(RegExp(r'\s*ízlés szerint\s*$', caseSensitive: false), '').trim();
+        return Ingredient(quantity: '', unit: 'ízlés szerint', name: name);
       }
 
-      // Parse ingredient with proper number handling
-      return _parseIngredient(text);
-    }).toList();
+      return _parseIngredient(trimmed);
+    }).whereType<Ingredient>().toList(); // Filter out nulls
+  }
 
-    int? cookingTime;
-    if (schemaData['totalTime'] is String) {
-      final match = RegExp(r'PT(\d+)M').firstMatch(schemaData['totalTime']);
+  // Parse cooking time safely
+  int? cookingTime;
+  try {
+    final timeData = schemaData['totalTime'];
+    if (timeData is String) {
+      final match = RegExp(r'PT(\d+)M').firstMatch(timeData);
       if (match != null) {
         cookingTime = int.tryParse(match.group(1)!);
       }
+    } else if (timeData is int) {
+      cookingTime = timeData;
     }
-
-    return Recipe(
-      id: '',
-      userId: userId,
-      name: _parseToString(schemaData['name'], fallback: 'Névtelen recept'),
-      ingredients: ingredients,
-      instructions: _parseInstructions(schemaData['recipeInstructions']),
-      category: _convertToAppCategory(schemaData['recipeCategory']),
-      createdAt: DateTime.now(),
-      imageUrl: _parseImage(schemaData['image']),
-      cookingTimeMinutes: cookingTime,
-    );
+  } catch (e) {
+    print('⚠️ Could not parse cooking time: $e');
   }
+
+  
+
+  return Recipe(
+    id: '',
+    userId: userId,
+    name: _parseToString(schemaData['name'], fallback: 'Névtelen recept'),
+    ingredients: ingredients,
+    instructions: _parseInstructions(schemaData['recipeInstructions']),
+    category: _convertToAppCategory(schemaData['recipeCategory']),
+    createdAt: DateTime.now(),
+    imageUrl: _parseImage(schemaData['image']),
+    cookingTimeMinutes: cookingTime,
+  );
+}
 
   // Parse a single ingredient string
   static Ingredient _parseIngredient(String text) {
@@ -266,39 +314,61 @@ static Map<String, dynamic>? _parseQuantity(List<String> parts) {
   // Helper parsing methods
   static String _parseToString(dynamic value, {String fallback = ''}) {
     if (value == null) return fallback;
-    if (value is String) return value;
-    if (value is List) return value.map((e) => e.toString()).join(', ');
-    if (value is Map && value.containsKey('text')) return value['text'].toString();
-    return value.toString();
+    
+    String result;
+    if (value is String) {
+      result = value;
+    } else if (value is List) {
+      result = value.map((e) => e.toString()).join(', ');
+    } else if (value is Map && value.containsKey('text')) {
+      result = value['text'].toString();
+    } else {
+      result = value.toString();
+    }
+    
+    // Decode HTML entities
+    return _htmlUnescape.convert(result);
   }
 
   static String _parseCategory(dynamic categoryData) {
     if (categoryData == null) return 'Főétel';
-    if (categoryData is String) return categoryData;
-    if (categoryData is List) {
-      return categoryData.isNotEmpty ? categoryData.first.toString() : 'Főétel';
+
+    String result;
+    if (categoryData is String) {
+      result = categoryData;
+    } else if (categoryData is List) {
+      result = categoryData.isNotEmpty ? categoryData.first.toString() : 'Főétel';
+    } else {
+      result = categoryData.toString();
     }
-    return categoryData.toString();
+
+    // Decode HTML entities
+    return _htmlUnescape.convert(result);
   }
 
   static String? _parseInstructions(dynamic instructionsData) {
     if (instructionsData == null) return null;
 
-    if (instructionsData is String) return instructionsData.trim();
-
-    if (instructionsData is List) {
-      return instructionsData.map((item) {
+    String result;
+    
+    if (instructionsData is String) {
+      result = instructionsData.trim();
+    } else if (instructionsData is List) {
+      result = instructionsData.map((item) {
         if (item is String) return item;
-        if (item is Map && item.containsKey('text')) return item['text'].toString();
+        if (item is Map && item.containsKey('text')) {
+          return item['text'].toString();
+        }
         return item.toString();
       }).join('\n\n');
+    } else if (instructionsData is Map && instructionsData.containsKey('text')) {
+      result = instructionsData['text'].toString();
+    } else {
+      result = instructionsData.toString();
     }
 
-    if (instructionsData is Map && instructionsData.containsKey('text')) {
-      return instructionsData['text'].toString();
-    }
-
-    return instructionsData.toString();
+    // Decode HTML entities
+    return _htmlUnescape.convert(result);
   }
 
   static String? _parseImage(dynamic imageData) {

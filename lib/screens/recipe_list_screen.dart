@@ -16,7 +16,7 @@ enum SortOption {
 }
 
 class RecipeListScreen extends StatefulWidget {
-  final bool isPremium; // Add this to track premium status
+  final bool isPremium;
 
   const RecipeListScreen({super.key, this.isPremium = false});
 
@@ -26,11 +26,24 @@ class RecipeListScreen extends StatefulWidget {
 
 class _RecipeListScreenState extends State<RecipeListScreen> {
   SortOption _currentSort = SortOption.alphabetical;
+  final TextEditingController _searchController = TextEditingController();
+  String _searchQuery = '';
 
   @override
   void initState() {
     super.initState();
     _loadSortPreference();
+    _searchController.addListener(() {
+      setState(() {
+        _searchQuery = _searchController.text.toLowerCase();
+      });
+    });
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadSortPreference() async {
@@ -65,6 +78,32 @@ class _RecipeListScreenState extends State<RecipeListScreen> {
     return sortedRecipes;
   }
 
+  List<Recipe> _filterRecipes(List<Recipe> recipes) {
+  print('🔍 Search query: "$_searchQuery"'); // Add this debug line
+  
+  if (_searchQuery.isEmpty) return recipes;
+  
+  final filtered = recipes.where((recipe) {
+    final nameLower = recipe.name.toLowerCase();
+    final categoryLower = recipe.category.toLowerCase();
+    final ingredientsLower = recipe.ingredients
+        .map((i) => i.name.toLowerCase())
+        .join(' ');
+    
+    final matches = nameLower.contains(_searchQuery) ||
+           categoryLower.contains(_searchQuery) ||
+           ingredientsLower.contains(_searchQuery);
+    
+    print('  Recipe: ${recipe.name} - Match: $matches'); // Add this too
+    
+    return matches;
+  }).toList();
+  
+  print('✅ Filtered: ${filtered.length} recipes'); // Add this
+  
+  return filtered;
+}
+
   @override
   Widget build(BuildContext context) {
     final userId = FirebaseAuth.instance.currentUser?.uid;
@@ -76,31 +115,52 @@ class _RecipeListScreenState extends State<RecipeListScreen> {
     return Scaffold(
       body: Column(
         children: [
-          // Import button - always visible
+          // Search Bar
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             decoration: BoxDecoration(
-              color: Colors.grey[100],
-              border: Border(bottom: BorderSide(color: Colors.grey[300]!)),
-            ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: () {
-                      ImportRecipeDialog.show(context, isPremium: widget.isPremium);
-                    },
-                    icon: const Icon(Icons.upload_file, size: 20),
-                    label: const Text('Importálás'),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: AppColors.coral,
-                      side: const BorderSide(color: AppColors.coral),
-                    ),
-                  ),
+              color: Colors.white,
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.05),
+                  blurRadius: 4,
+                  offset: const Offset(0, 2),
                 ),
               ],
             ),
+            child: TextField(
+              controller: _searchController,
+              decoration: InputDecoration(
+                hintText: 'Keresés receptek között...',
+                prefixIcon: const Icon(Icons.search, color: AppColors.coral),
+                suffixIcon: _searchQuery.isNotEmpty
+                    ? IconButton(
+                        icon: const Icon(Icons.clear),
+                        onPressed: () {
+                          _searchController.clear();
+                        },
+                      )
+                    : null,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: Colors.grey[300]!),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: Colors.grey[300]!),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: const BorderSide(color: AppColors.coral, width: 2),
+                ),
+                filled: true,
+                fillColor: Colors.grey[50],
+                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              ),
+            ),
           ),
+          
+          // Sort buttons (removed import button)
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             decoration: BoxDecoration(
@@ -157,6 +217,7 @@ class _RecipeListScreenState extends State<RecipeListScreen> {
               ],
             ),
           ),
+          
           Expanded(
             child: StreamBuilder<QuerySnapshot>(
               stream: FirebaseFirestore.instance
@@ -178,6 +239,8 @@ class _RecipeListScreenState extends State<RecipeListScreen> {
                           doc.data() as Map<String, dynamic>,
                         ))
                     .toList();
+
+                final filteredRecipes = _filterRecipes(recipes);
 
                 if (recipes.isEmpty) {
                   return Center(
@@ -214,7 +277,35 @@ class _RecipeListScreenState extends State<RecipeListScreen> {
                   );
                 }
 
-                final sortedRecipes = _sortRecipes(recipes);
+                if (filteredRecipes.isEmpty) {
+                  return Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.search_off,
+                          size: 64,
+                          color: Colors.grey[400],
+                        ),
+                        const SizedBox(height: 16),
+                        Text(
+                          'Nincs találat',
+                          style: TextStyle(
+                            fontSize: 18,
+                            color: Colors.grey[600],
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'Próbálj meg más keresési kifejezést!',
+                          style: TextStyle(color: Colors.grey[500]),
+                        ),
+                      ],
+                    ),
+                  );
+                }
+
+                final sortedRecipes = _sortRecipes(filteredRecipes);
 
                 if (_currentSort == SortOption.category) {
                   return _buildCategoryGroupedList(sortedRecipes);
@@ -227,17 +318,12 @@ class _RecipeListScreenState extends State<RecipeListScreen> {
         ],
       ),
       floatingActionButton: FloatingActionButton(
-        onPressed: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => const AddRecipeScreen(),
-            ),
-          );
-        },
-        backgroundColor: AppColors.coral,
-        child: const Icon(Icons.add, color: Colors.white),
-      ),
+  onPressed: () {
+    ImportRecipeDialog.show(context, isPremium: widget.isPremium);
+  },
+  backgroundColor: AppColors.coral,
+  child: const Icon(Icons.add, color: Colors.white),
+),
     );
   }
 
@@ -309,84 +395,125 @@ class _RecipeListScreenState extends State<RecipeListScreen> {
   }
 
   Widget _buildRecipeCard(Recipe recipe) {
-    final categoryData = RecipeCategories.getCategory(recipe.category);
+  final categoryData = RecipeCategories.getCategory(recipe.category);
 
-    return Card(
-      margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
-      child: ListTile(
-        leading: recipe.imageUrl != null
-            ? ClipRRect(
-                borderRadius: BorderRadius.circular(8),
-                child: Image.network(
-                  recipe.imageUrl!,
-                  width: 56,
-                  height: 56,
-                  fit: BoxFit.cover,
-                  errorBuilder: (context, error, stackTrace) {
-                    return CircleAvatar(
-                      backgroundColor: categoryData.color,
-                      child: Text(
-                        categoryData.emoji,
-                        style: const TextStyle(fontSize: 24),
-                      ),
-                    );
-                  },
-                ),
-              )
-            : CircleAvatar(
-                backgroundColor: categoryData.color,
-                child: Text(
-                  categoryData.emoji,
-                  style: const TextStyle(fontSize: 24),
-                ),
-              ),
-        title: Text(
-          recipe.name,
-          style: const TextStyle(fontWeight: FontWeight.bold),
-        ),
-        subtitle: Row(
+  return Card(
+    margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+    child: InkWell(
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => RecipeDetailScreen(recipe: recipe),
+          ),
+        );
+      },
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        height: 95, // Fixed height for 2 rows
+        padding: const EdgeInsets.all(12),
+        child: Row(
           children: [
-            Container(
-              padding: const EdgeInsets.symmetric(
-                horizontal: 8,
-                vertical: 2,
-              ),
-              decoration: BoxDecoration(
-                color: categoryData.color.withOpacity(0.2),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Text(
-                recipe.category,
-                style: TextStyle(
-                  color: categoryData.color.withOpacity(0.8),
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                ),
+            // Image or Emoji - same size for both
+            ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: recipe.imageUrl != null && recipe.imageUrl!.isNotEmpty
+                  ? Image.network(
+                      recipe.imageUrl!,
+                      width: 64,
+                      height: 64,
+                      fit: BoxFit.cover,
+                      errorBuilder: (context, error, stackTrace) {
+                        return _buildEmojiPlaceholder(categoryData);
+                      },
+                    )
+                  : _buildEmojiPlaceholder(categoryData),
+            ),
+            const SizedBox(width: 12),
+            
+            // Content
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  // Title - max 2 lines
+                  Text(
+                    recipe.name,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                    ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 4),
+                  
+                  // Subtitle info - with proper overflow handling
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: categoryData.color.withOpacity(0.2),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          recipe.category,
+                          style: TextStyle(
+                            color: categoryData.color.withOpacity(0.8),
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          '${recipe.ingredients.length} hozzávaló${recipe.cookingTimeMinutes != null ? ' • ${recipe.cookingTimeMinutes} perc' : ''}',
+                          style: TextStyle(
+                            color: Colors.grey[600],
+                            fontSize: 12,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
               ),
             ),
+            
+            // Arrow
             const SizedBox(width: 8),
-            Text(
-              '• ${recipe.ingredients.length} hozzávaló',
-              style: TextStyle(color: Colors.grey[600]),
+            Icon(
+              Icons.chevron_right,
+              color: Colors.grey[400],
             ),
-            if (recipe.cookingTimeMinutes != null) ...[
-              const SizedBox(width: 8),
-              Text(
-                '• ${recipe.cookingTimeMinutes} perc',
-                style: TextStyle(color: Colors.grey[600]),
-              ),
-            ],
           ],
         ),
-        trailing: const Icon(Icons.chevron_right),
-        onTap: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => RecipeDetailScreen(recipe: recipe),
-            ),
-          );
-        },
+      ),
+    ),
+  );
+}
+
+  Widget _buildEmojiPlaceholder(dynamic categoryData) {
+    return Container(
+      width: 64,
+      height: 64,
+      decoration: BoxDecoration(
+        color: categoryData.color.withOpacity(0.2),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Center(
+        child: Text(
+          categoryData.emoji,
+          style: const TextStyle(fontSize: 32),
+        ),
       ),
     );
   }
