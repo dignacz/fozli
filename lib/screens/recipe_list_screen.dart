@@ -3,11 +3,13 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:file_picker/file_picker.dart';
 import '../models/recipe.dart';
 import 'add_recipe_screen.dart';
 import 'recipe_detail_screen.dart';
 import '../utils/app_colors.dart';
 import '../utils/recipe_categories.dart';
+import '../services/fozli_import_service.dart';
 
 enum SortOption {
   alphabetical,
@@ -46,13 +48,143 @@ class _RecipeListScreenState extends State<RecipeListScreen> {
     });
   }
 
+  Future<void> _importFozliFile() async {
+  try {
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.any,
+    );
+
+    if (result == null) return;
+
+    final filePath = result.files.single.path!;
+    if (!filePath.endsWith('.fozli')) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Kérlek válassz egy .fozli fájlt!'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      return;
+    }
+
+    if (mounted) {
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const Center(
+          child: CircularProgressIndicator(color: AppColors.coral),
+        ),
+      );
+    }
+
+    final importResult = await FozliImportService.importFozliFile(filePath);
+
+    if (mounted) {
+      Navigator.pop(context);
+
+      // Check if importing wrong type
+      if (importResult.success && importResult.importedType == 'shopping_list') {
+        showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Row(
+              children: [
+                Icon(Icons.info, color: Colors.orange),
+                SizedBox(width: 12),
+                Text('Bevásárlólista importálva'),
+              ],
+            ),
+            content: const Text(
+              'Ez egy bevásárlólista volt, ezért a Bevásárlólista fülön lett hozzáadva.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Rendben'),
+              ),
+            ],
+          ),
+        );
+        return;
+      }
+
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Row(
+            children: [
+              Icon(
+                importResult.success ? Icons.check_circle : Icons.error,
+                color: importResult.success ? Colors.green : Colors.red,
+              ),
+              const SizedBox(width: 12),
+              Text(importResult.success ? 'Sikeres!' : 'Hiba'),
+            ],
+          ),
+          content: Text(importResult.message),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context);
+                // Navigate to detail page if import was successful
+                if (importResult.success && importResult.importedId != null) {
+                  _navigateToImportedRecipe(importResult.importedId!);
+                }
+              },
+              child: Text(importResult.success ? 'Megnézem' : 'Rendben'),
+            ),
+            if (importResult.success)
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Bezárás'),
+              ),
+          ],
+        ),
+      );
+    }
+  } catch (e) {
+    if (mounted) {
+      Navigator.pop(context); // Close loading dialog
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Hiba: $e')),
+      );
+    }
+  }
+}
+
+Future<void> _navigateToImportedRecipe(String recipeId) async {
+  try {
+    final doc = await FirebaseFirestore.instance
+        .collection('recipes')
+        .doc(recipeId)
+        .get();
+
+    if (doc.exists && mounted) {
+      final recipe = Recipe.fromMap(doc.id, doc.data() as Map<String, dynamic>);
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => RecipeDetailScreen(recipe: recipe),
+        ),
+      );
+    }
+  } catch (e) {
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Hiba: $e')),
+      );
+    }
+  }
+}
+
   List<Recipe> _sortRecipes(List<Recipe> recipes) {
     final sortedRecipes = List<Recipe>.from(recipes);
     
     if (_currentSort == SortOption.alphabetical) {
       sortedRecipes.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
     } else {
-      // Sort by category, then alphabetically within each category
       sortedRecipes.sort((a, b) {
         final categoryCompare = a.category.compareTo(b.category);
         if (categoryCompare != 0) return categoryCompare;
@@ -64,24 +196,44 @@ class _RecipeListScreenState extends State<RecipeListScreen> {
   }
 
   @override
-  Widget build(BuildContext context) {
-    final userId = FirebaseAuth.instance.currentUser?.uid;
+Widget build(BuildContext context) {
+  final userId = FirebaseAuth.instance.currentUser?.uid;
 
-    if (userId == null) {
-      return const Center(child: Text('Nincs bejelentkezve'));
-    }
+  if (userId == null) {
+    return const Center(child: Text('Nincs bejelentkezve'));
+  }
 
-    return Scaffold(
-      body: Column(
-        children: [
-          // Sort Options
+  return Scaffold(
+    body: Column(
+      children: [
+        // Import button - always visible
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          decoration: BoxDecoration(
+            color: Colors.grey[100],
+            border: Border(bottom: BorderSide(color: Colors.grey[300]!)),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: _importFozliFile,
+                  icon: const Icon(Icons.upload_file, size: 20),
+                  label: const Text('Importálás'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppColors.coral,
+                    side: const BorderSide(color: AppColors.coral),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             decoration: BoxDecoration(
               color: Colors.grey[100],
-              border: Border(
-                bottom: BorderSide(color: Colors.grey[300]!),
-              ),
+              border: Border(bottom: BorderSide(color: Colors.grey[300]!)),
             ),
             child: Row(
               children: [
@@ -133,8 +285,6 @@ class _RecipeListScreenState extends State<RecipeListScreen> {
               ],
             ),
           ),
-
-          // Recipe List
           Expanded(
             child: StreamBuilder<QuerySnapshot>(
               stream: FirebaseFirestore.instance
@@ -192,10 +342,8 @@ class _RecipeListScreenState extends State<RecipeListScreen> {
                   );
                 }
 
-                // Sort recipes based on current selection
                 final sortedRecipes = _sortRecipes(recipes);
 
-                // Group by category if category sort is selected
                 if (_currentSort == SortOption.category) {
                   return _buildCategoryGroupedList(sortedRecipes);
                 } else {
@@ -233,7 +381,6 @@ class _RecipeListScreenState extends State<RecipeListScreen> {
   }
 
   Widget _buildCategoryGroupedList(List<Recipe> recipes) {
-    // Group recipes by category
     final Map<String, List<Recipe>> groupedRecipes = {};
     for (var recipe in recipes) {
       if (!groupedRecipes.containsKey(recipe.category)) {
@@ -253,7 +400,6 @@ class _RecipeListScreenState extends State<RecipeListScreen> {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Category Header
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
               child: Row(
@@ -282,7 +428,6 @@ class _RecipeListScreenState extends State<RecipeListScreen> {
                 ],
               ),
             ),
-            // Recipes in this category
             ...categoryRecipes.map((recipe) => _buildRecipeCard(recipe)),
             const SizedBox(height: 8),
           ],

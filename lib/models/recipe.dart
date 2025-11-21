@@ -1,3 +1,6 @@
+//models/recipe.dart
+import 'package:cloud_firestore/cloud_firestore.dart'; // Add this import
+
 class Recipe {
   final String id;
   final String userId;
@@ -31,6 +34,15 @@ class Recipe {
 
   // Create Recipe from Firestore document
   factory Recipe.fromMap(String id, Map<String, dynamic> map) {
+    // Create Recipe from Firestore document
+    DateTime parsedCreatedAt;
+    if (map['createdAt'] is Timestamp) {
+      parsedCreatedAt = (map['createdAt'] as Timestamp).toDate();
+    } else if (map['createdAt'] is String) {
+      parsedCreatedAt = DateTime.parse(map['createdAt'] as String);
+    } else {
+      parsedCreatedAt = DateTime.now();
+    }
     return Recipe(
       id: id,
       userId: map['userId'] ?? '',
@@ -41,7 +53,7 @@ class Recipe {
           [],
       instructions: map['instructions'],
       category: map['category'] ?? 'Főétel',
-      createdAt: DateTime.parse(map['createdAt'] ?? DateTime.now().toIso8601String()),
+      createdAt: parsedCreatedAt,
     );
   }
 }

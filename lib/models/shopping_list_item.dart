@@ -1,10 +1,12 @@
 //models/shopping_list_item.dart
+import 'package:cloud_firestore/cloud_firestore.dart'; // Add this import
+
 class ShoppingListItem {
   final String id;
   final String userId;
   final String name;
   final String quantity;
-  final String unit; // Add unit field
+  final String unit;
   final bool checked;
   final DateTime createdAt;
 
@@ -13,7 +15,7 @@ class ShoppingListItem {
     required this.userId,
     required this.name,
     required this.quantity,
-    required this.unit, // Add unit
+    required this.unit,
     this.checked = false,
     required this.createdAt,
   });
@@ -23,21 +25,31 @@ class ShoppingListItem {
       'userId': userId,
       'name': name,
       'quantity': quantity,
-      'unit': unit, // Add unit
+      'unit': unit,
       'checked': checked,
       'createdAt': createdAt.toIso8601String(),
     };
   }
 
   factory ShoppingListItem.fromMap(String id, Map<String, dynamic> map) {
+    // Handle both Timestamp (from Firestore) and String (from imported .fozli files)
+    DateTime parsedCreatedAt;
+    if (map['createdAt'] is Timestamp) {
+      parsedCreatedAt = (map['createdAt'] as Timestamp).toDate();
+    } else if (map['createdAt'] is String) {
+      parsedCreatedAt = DateTime.parse(map['createdAt'] as String);
+    } else {
+      parsedCreatedAt = DateTime.now();
+    }
+
     return ShoppingListItem(
       id: id,
       userId: map['userId'] ?? '',
       name: map['name'] ?? '',
       quantity: map['quantity'] ?? '',
-      unit: map['unit'] ?? 'db', // Add unit with default
+      unit: map['unit'] ?? 'db',
       checked: map['checked'] ?? false,
-      createdAt: DateTime.parse(map['createdAt'] ?? DateTime.now().toIso8601String()),
+      createdAt: parsedCreatedAt,
     );
   }
 
@@ -46,7 +58,7 @@ class ShoppingListItem {
     String? userId,
     String? name,
     String? quantity,
-    String? unit, // Add unit
+    String? unit,
     bool? checked,
     DateTime? createdAt,
   }) {
@@ -55,7 +67,7 @@ class ShoppingListItem {
       userId: userId ?? this.userId,
       name: name ?? this.name,
       quantity: quantity ?? this.quantity,
-      unit: unit ?? this.unit, // Add unit
+      unit: unit ?? this.unit,
       checked: checked ?? this.checked,
       createdAt: createdAt ?? this.createdAt,
     );

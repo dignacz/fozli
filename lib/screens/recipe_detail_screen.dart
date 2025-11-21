@@ -4,6 +4,9 @@ import '../utils/recipe_categories.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'dart:convert';
+import 'dart:io';
+import 'package:share_plus/share_plus.dart';
 import '../models/recipe.dart';
 import '../models/shopping_list_item.dart';
 import '../models/cooking_log.dart';
@@ -20,6 +23,30 @@ class RecipeDetailScreen extends StatefulWidget {
 }
 
 class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
+  Map<String, dynamic> _convertTimestampsToStrings(Map<String, dynamic> data) {
+  final result = <String, dynamic>{};
+  
+  data.forEach((key, value) {
+    if (value is Timestamp) {
+      result[key] = value.toDate().toIso8601String();
+    } else if (value is List) {
+      result[key] = value.map((item) {
+        if (item is Map<String, dynamic>) {
+          return _convertTimestampsToStrings(item);
+        } else if (item is Timestamp) {
+          return item.toDate().toIso8601String();
+        }
+        return item;
+      }).toList();
+    } else if (value is Map<String, dynamic>) {
+      result[key] = _convertTimestampsToStrings(value);
+    } else {
+      result[key] = value;
+    }
+  });
+  
+  return result;
+}
   late Recipe _recipe;
   bool _isLoading = false;
   bool _isCookedToday = false;
@@ -46,7 +73,6 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
           .where('recipeId', isEqualTo: _recipe.id)
           .get();
 
-      // Check if any log is from today
       final cookedToday = snapshot.docs.any((doc) {
         final log = CookingLog.fromMap(doc.id, doc.data());
         return log.cookedDate.isAfter(startOfDay) &&
@@ -165,6 +191,170 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
     }
   }
 
+  Future<void> _showShareOptions() async {
+  showModalBottomSheet(
+    context: context,
+    builder: (context) => SafeArea(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ListTile(
+            leading: const Icon(Icons.text_snippet, color: AppColors.coral),
+            title: const Text('Megosztás szövegként'),
+            subtitle: const Text('Könnyen olvasható formátum'),
+            onTap: () {
+              Navigator.pop(context);
+              _shareAsText();
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.insert_drive_file, color: AppColors.coral),
+            title: const Text('Megosztás .fozli fájlként'),
+            subtitle: const Text('Megosztás más eszközökkel'),
+            onTap: () {
+              Navigator.pop(context);
+              _shareAsFozli();
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.download, color: AppColors.coral),
+            title: const Text('Mentés eszközre'),
+            subtitle: const Text('Letöltés a Letöltések mappába'),
+            onTap: () {
+              Navigator.pop(context);
+              _downloadFozli();
+            },
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
+  Future<void> _shareAsText() async {
+    try {
+      final StringBuffer buffer = StringBuffer();
+      buffer.writeln('📖 ${_recipe.name}');
+      buffer.writeln();
+      buffer.writeln('Kategória: ${_recipe.category}');
+      buffer.writeln();
+      buffer.writeln('🛒 Hozzávalók:');
+      for (var ingredient in _recipe.ingredients) {
+        buffer.writeln('  • ${ingredient.name} - ${ingredient.quantity} ${ingredient.unit}');
+      }
+      
+      if (_recipe.instructions != null && _recipe.instructions!.isNotEmpty) {
+        buffer.writeln();
+        buffer.writeln('👨‍🍳 Elkészítés:');
+        buffer.writeln(_recipe.instructions);
+      }
+      
+      buffer.writeln();
+      buffer.writeln('---');
+      buffer.writeln('Megosztva a Főzli alkalmazásból');
+
+      await Share.share(
+        buffer.toString(),
+        subject: _recipe.name,
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Hiba: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _downloadFozli() async {
+  try {
+    final recipeData = _recipe.toMap();
+    recipeData.remove('userId');
+    recipeData.remove('id');
+    
+    // Convert all Timestamps to ISO8601 strings
+    final cleanedData = _convertTimestampsToStrings(recipeData);
+    
+    final jsonData = jsonEncode({
+      'type': 'recipe',
+      'version': '1.0',
+      ...cleanedData,
+      'exportedAt': DateTime.now().toIso8601String(),
+    });
+
+    // For Android, save to Downloads folder
+    final downloadsDir = Directory('/storage/emulated/0/Download');
+    if (!await downloadsDir.exists()) {
+      throw Exception('Letöltések mappa nem található');
+    }
+
+    final fileName = '${_recipe.name.replaceAll(' ', '_')}.fozli';
+    final filePath = '${downloadsDir.path}/$fileName';
+    final file = File(filePath);
+    await file.writeAsString(jsonData);
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Mentve: $fileName'),
+          backgroundColor: Colors.green,
+          action: SnackBarAction(
+            label: 'Rendben',
+            textColor: Colors.white,
+            onPressed: () {},
+          ),
+        ),
+      );
+    }
+  } catch (e) {
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Hiba: $e')),
+      );
+    }
+  }
+}
+
+  Future<void> _shareAsFozli() async {
+  try {
+    final recipeData = _recipe.toMap();
+    recipeData.remove('userId');
+    recipeData.remove('id');
+    
+    // Convert all Timestamps to ISO8601 strings
+    final cleanedData = _convertTimestampsToStrings(recipeData);
+    
+    final jsonData = jsonEncode({
+      'type': 'recipe',
+      'version': '1.0',
+      ...cleanedData,
+      'exportedAt': DateTime.now().toIso8601String(),
+    });
+
+    final tempDir = Directory.systemTemp;
+    final fileName = '${_recipe.name.replaceAll(' ', '_')}.fozli';
+    final filePath = '${tempDir.path}/$fileName';
+    final file = File(filePath);
+    await file.writeAsString(jsonData);
+
+    final result = await Share.shareXFiles(
+      [XFile(filePath)],
+      subject: _recipe.name,
+      text: 'Főzli recept: ${_recipe.name}',
+    );
+
+    // Only show success message if actually shared
+    // ShareResult is available in newer versions of share_plus
+    // For now, we just won't show the success message
+  } catch (e) {
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Hiba: $e')),
+      );
+    }
+  }
+}
+
   Future<void> _deleteRecipe(BuildContext context) async {
     final confirm = await showDialog<bool>(
       context: context,
@@ -217,6 +407,11 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
         foregroundColor: Colors.white,
         actions: [
           IconButton(
+            icon: const Icon(Icons.share),
+            onPressed: _showShareOptions,
+            tooltip: 'Megosztás',
+          ),
+          IconButton(
             icon: const Icon(Icons.edit),
             onPressed: () async {
               final result = await Navigator.push(
@@ -227,7 +422,7 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
               );
 
               if (result == true) {
-                await _loadRecipe(); // Reload the recipe after editing
+                await _loadRecipe();
               }
             },
             tooltip: 'Szerkesztés',
@@ -244,7 +439,6 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
           : ListView(
               padding: const EdgeInsets.all(16),
               children: [
-                // Category Badge
                 Center(
                   child: Container(
                     padding: const EdgeInsets.symmetric(
@@ -279,7 +473,6 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
                   ),
                 ),
                 const SizedBox(height: 16),
-                // Ingredients Card
                 Card(
                   child: Padding(
                     padding: const EdgeInsets.all(16),
@@ -338,8 +531,6 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
                   ),
                 ),
                 const SizedBox(height: 16),
-
-                // Instructions Card (if exists)
                 if (_recipe.instructions != null &&
                     _recipe.instructions!.isNotEmpty)
                   Card(
@@ -361,8 +552,6 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
                       ),
                     ),
                   ),
-
-                // Cooked Today Button
                 const SizedBox(height: 16),
                 SizedBox(
                   width: double.infinity,
@@ -387,7 +576,7 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
                     ),
                   ),
                 ),
-                const SizedBox(height: 32), // Added margin at the bottom
+                const SizedBox(height: 32),
               ],
             ),
     );
