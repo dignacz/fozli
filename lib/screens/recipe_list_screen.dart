@@ -18,7 +18,7 @@ enum SortOption {
 class RecipeListScreen extends StatefulWidget {
   final bool isPremium;
 
-  const RecipeListScreen({super.key, this.isPremium = false});
+  const RecipeListScreen({super.key, this.isPremium = true}); //PREMIUM FEATURES ENABLED FOR DEV TESTING
 
   @override
   State<RecipeListScreen> createState() => _RecipeListScreenState();

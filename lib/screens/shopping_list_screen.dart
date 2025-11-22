@@ -8,17 +8,29 @@ import 'package:share_plus/share_plus.dart';
 import '../models/shopping_list_item.dart';
 import '../utils/app_colors.dart';
 import 'import_shopping_list_dialog.dart';
+import 'package:speech_to_text/speech_to_text.dart' as stt;
+import 'package:permission_handler/permission_handler.dart';
+import '../services/ai_import_service.dart';
 
 class ShoppingListScreen extends StatefulWidget {
   final bool isPremium; // Add this to track premium status
 
-  const ShoppingListScreen({super.key, this.isPremium = false});
+  const ShoppingListScreen({super.key, this.isPremium = true}); //PREMIUM FEATURES ENABLED FOR DEV TESTINGS
 
   @override
   State<ShoppingListScreen> createState() => _ShoppingListScreenState();
 }
 
 class _ShoppingListScreenState extends State<ShoppingListScreen> {
+  late stt.SpeechToText _speech;
+  bool _isListening = false;
+  String _voiceText = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _speech = stt.SpeechToText();
+  }
   Map<String, dynamic> _convertTimestampsToStrings(Map<String, dynamic> data) {
     final result = <String, dynamic>{};
     
@@ -44,6 +56,8 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
     return result;
   }
 
+  
+
   static const List<String> _shoppingUnits = [
     'db',
     'csomag',
@@ -54,6 +68,154 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
     'dl',
     'ml',
   ];
+
+// Add this method for voice recording:
+  Future<void> _startVoiceRecording() async {
+    // Request microphone permission
+    final status = await Permission.microphone.request();
+    if (!status.isGranted) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Mikrofon engedély szükséges!')),
+        );
+      }
+      return;
+    }
+
+    // Initialize speech recognition
+    bool available = await _speech.initialize(
+      onStatus: (status) {
+        if (status == 'done' && _voiceText.isNotEmpty) {
+          _processVoiceInput();
+        }
+      },
+      onError: (error) {
+        setState(() => _isListening = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Hiba: $error')),
+        );
+      },
+    );
+
+    if (!available) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Beszédfelismerés nem elérhető')),
+        );
+      }
+      return;
+    }
+
+    setState(() {
+      _isListening = true;
+      _voiceText = '';
+    });
+
+    _speech.listen(
+      onResult: (result) {
+        setState(() {
+          _voiceText = result.recognizedWords;
+        });
+      },
+      localeId: 'hu_HU',
+      listenMode: stt.ListenMode.confirmation,
+    );
+
+    // Show listening dialog
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.mic, color: AppColors.coral),
+            SizedBox(width: 12),
+            Text('Hallgatok...'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(
+              height: 50,
+              width: 50,
+              child: CircularProgressIndicator(
+                color: AppColors.coral,
+                strokeWidth: 3,
+              ),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              _voiceText.isEmpty ? 'Mondj valamit...' : _voiceText,
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 16),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              _speech.stop();
+              setState(() => _isListening = false);
+              Navigator.pop(context);
+            },
+            child: const Text('Kész'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _processVoiceInput() async {
+    if (_voiceText.isEmpty) return;
+
+    setState(() => _isListening = false);
+    Navigator.pop(context); // Close listening dialog
+
+    // Show processing dialog
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(
+        child: Card(
+          child: Padding(
+            padding: EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                CircularProgressIndicator(color: AppColors.coral),
+                SizedBox(height: 16),
+                Text('AI feldolgozás...'),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+
+    // Use AI to parse the voice text
+    final result = await AiImportService.importShoppingListFromText(_voiceText);
+
+    if (mounted) {
+      Navigator.pop(context); // Close processing dialog
+
+      if (result.success) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(result.message),
+            backgroundColor: Colors.green,
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(result.message),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
 
   Future<void> _showShareOptions(List<ShoppingListItem> items) async {
     showModalBottomSheet(
@@ -179,6 +341,7 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
       }
     }
   }
+
 
   Future<void> _addItem(BuildContext context) async {
     final nameController = TextEditingController();
@@ -455,6 +618,7 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
     }
   }
 
+
   @override
   Widget build(BuildContext context) {
     final userId = FirebaseAuth.instance.currentUser?.uid;
@@ -631,10 +795,29 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () => _addItem(context),
-        backgroundColor: AppColors.coral,
-        child: const Icon(Icons.add, color: Colors.white),
+      floatingActionButton: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Voice recording button
+          FloatingActionButton(
+            heroTag: 'voice_fab',
+            onPressed: _startVoiceRecording,
+            backgroundColor: AppColors.lavender,
+            mini: true,
+            child: Icon(
+              _isListening ? Icons.mic : Icons.mic_none,
+              color: Colors.white,
+            ),
+          ),
+          const SizedBox(height: 12),
+          // Regular add button
+          FloatingActionButton(
+            heroTag: 'add_fab',
+            onPressed: () => _addItem(context),
+            backgroundColor: AppColors.coral,
+            child: const Icon(Icons.add, color: Colors.white),
+       ),
+        ],
       ),
     );
   }

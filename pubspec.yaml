@@ -44,6 +44,8 @@ dependencies:
   image_picker: ^1.0.7
   flutter_dotenv: ^6.0.0
   html_unescape: ^2.0.0
+  #speech_to_text: ^6.6.2
+  #permission_handler: ^11.0.1
 
   flutter_localizations:
     sdk: flutter
@@ -65,6 +67,8 @@ dev_dependencies:
 
 # The following section is specific to Flutter packages.
 flutter:
+  assets:
+      - .env
 
   # The following line ensures that the Material Icons font is
   # included with your application, so that you can use the icons in

@@ -4,14 +4,25 @@ import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
 import 'auth_wrapper.dart';
 import 'utils/app_colors.dart';
+import 'services/ai_import_service.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 void main() async {
   // MUST be first!
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Load .env file
+  await dotenv.load(fileName: ".env");
   
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
+
+  // Set API key from .env
+  final apiKey = dotenv.env['GEMINI_API_KEY']; // ← ADD THIS
+  if (apiKey != null) {
+    AiImportService.setApiKey(apiKey);
+  }
   
   runApp(const MyApp());
 }
