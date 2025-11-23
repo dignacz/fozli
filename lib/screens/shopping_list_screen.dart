@@ -12,7 +12,7 @@ import 'import_shopping_list_dialog.dart';
 class ShoppingListScreen extends StatefulWidget {
   final bool isPremium; // Add this to track premium status
 
-  const ShoppingListScreen({super.key, this.isPremium = false});
+  const ShoppingListScreen({super.key, this.isPremium = true}); //PREMIUM FEATURES ENABLED FOR DEV TESTINGS
 
   @override
   State<ShoppingListScreen> createState() => _ShoppingListScreenState();
