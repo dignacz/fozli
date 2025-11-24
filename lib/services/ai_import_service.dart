@@ -333,7 +333,7 @@ CRITICAL RULES:
 3. Do NOT make up or invent any recipe information
 4. Do NOT accept incomplete recipes (missing ingredients or instructions)
 5. PRESERVE paragraph breaks in instructions using \\n\\n between paragraphs
-6. If the text contains an image URL (http:// or https://), extract it to the "image" field
+6. ONLY extract fields that are EXPLICITLY present in the input - do NOT guess or estimate
 
 Input text: $text
 
@@ -344,13 +344,31 @@ If this is a valid recipe, extract and return ONLY this JSON (no other text):
   "recipeCategory": "Category (Főétel, Desszert, Leves, Saláta, Ital, Péksütemény, or Egyéb)",
   "recipeIngredient": ["quantity unit ingredient", "quantity unit ingredient"],
   "recipeInstructions": "Step by step instructions in Hungarian. Preserve paragraph breaks with \\n\\n between paragraphs.",
-  "totalTime": "PT30M" (optional, format: PT[minutes]M),
-  "image": "https://example.com/image.jpg" (if image URL found in text, otherwise null)
+  "totalTime": "PT30M" (ONLY if cooking time is EXPLICITLY mentioned, format: PT[minutes]M, otherwise null),
+  "recipeYield": 4 (ONLY if servings/portions are EXPLICITLY mentioned, use number only, otherwise null),
+  "image": "https://example.com/image.jpg" (ONLY if image URL found in text, otherwise null)
 }
+
+SERVINGS EXTRACTION (only when present):
+- "4 servings" → "recipeYield": 4
+- "6 adag" → "recipeYield": 6
+- "serves 8" → "recipeYield": 8
+- "2-4 people" → "recipeYield": 4 (use highest number)
+- "egy tepsire" → "recipeYield": 4
+- "25 db" → "recipeYield": 25
+- NO servings mentioned → "recipeYield": null
+
+COOKING TIME EXTRACTION (only when present):
+- "30 minutes" → "totalTime": "PT30M"
+- "1 hour" → "totalTime": "PT60M"
+- "45 perc" → "totalTime": "PT45M"
+- "1.5 hours" → "totalTime": "PT90M"
+- NO time mentioned → "totalTime": null
 
 IMPORTANT: 
 - In recipeInstructions, use \\n\\n to separate different steps or paragraphs!
-- If you find an image URL in the text, put it in the "image" field, otherwise use null
+- Do NOT invent or estimate cooking time or servings if not explicitly stated
+- Use null for totalTime, recipeYield, and image if not found in the input
 
 If NOT a valid recipe, return: {"error": "not_a_recipe"}
 ''';
@@ -383,102 +401,102 @@ If NOT a valid shopping list, return: {"error": "not_a_shopping_list"}
   }
 
   static Future<String?> _callGeminiApi(String prompt) async {
-  try {
-    final url = Uri.parse(
-      'https://generativelanguage.googleapis.com/v1beta/models/$_model:generateContent?key=$_apiKey',
-    );
+    try {
+      final url = Uri.parse(
+        'https://generativelanguage.googleapis.com/v1beta/models/$_model:generateContent?key=$_apiKey',
+      );
 
-    final response = await http.post(
-      url,
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({
-        'contents': [
-          {
-            'parts': [
-              {'text': prompt}
-            ]
+      final response = await http.post(
+        url,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'contents': [
+            {
+              'parts': [
+                {'text': prompt}
+              ]
+            }
+          ],
+          'generationConfig': {
+            'temperature': 0.1,
+            'topK': 1,
+            'topP': 1,
+            'maxOutputTokens': 2048,
           }
-        ],
-        'generationConfig': {
-          'temperature': 0.1,
-          'topK': 1,
-          'topP': 1,
-          'maxOutputTokens': 2048,
-        }
-      }),
-    );
+        }),
+      );
 
-    if (response.statusCode == 200) {
-      final data = jsonDecode(response.body);
-      final text = data['candidates']?[0]?['content']?['parts']?[0]?['text'];
-      
-      // ✅ STRIP MARKDOWN CODE BLOCKS
-      if (text != null) {
-        String cleaned = text.trim();
-        cleaned = cleaned.replaceAll(RegExp(r'^```json\s*'), '');
-        cleaned = cleaned.replaceAll(RegExp(r'^```\s*'), '');
-        cleaned = cleaned.replaceAll(RegExp(r'\s*```$'), '');
-        return cleaned.trim();
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final text = data['candidates']?[0]?['content']?['parts']?[0]?['text'];
+        
+        // ✅ STRIP MARKDOWN CODE BLOCKS
+        if (text != null) {
+          String cleaned = text.trim();
+          cleaned = cleaned.replaceAll(RegExp(r'^```json\s*'), '');
+          cleaned = cleaned.replaceAll(RegExp(r'^```\s*'), '');
+          cleaned = cleaned.replaceAll(RegExp(r'\s*```$'), '');
+          return cleaned.trim();
+        }
       }
+      return null;
+    } catch (e) {
+      print('API call error: $e');
+      return null;
     }
-    return null;
-  } catch (e) {
-    print('API call error: $e');
-    return null;
   }
-}
 
   static Future<String?> _callGeminiApiWithImage(String prompt, String base64Image) async {
-  try {
-    final url = Uri.parse(
-      'https://generativelanguage.googleapis.com/v1beta/models/$_model:generateContent?key=$_apiKey',
-    );
+    try {
+      final url = Uri.parse(
+        'https://generativelanguage.googleapis.com/v1beta/models/$_model:generateContent?key=$_apiKey',
+      );
 
-    final response = await http.post(
-      url,
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({
-        'contents': [
-          {
-            'parts': [
-              {'text': prompt},
-              {
-                'inline_data': {
-                  'mime_type': 'image/jpeg',
-                  'data': base64Image,
+      final response = await http.post(
+        url,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'contents': [
+            {
+              'parts': [
+                {'text': prompt},
+                {
+                  'inline_data': {
+                    'mime_type': 'image/jpeg',
+                    'data': base64Image,
+                  }
                 }
-              }
-            ]
+              ]
+            }
+          ],
+          'generationConfig': {
+            'temperature': 0.1,
+            'topK': 1,
+            'topP': 1,
+            'maxOutputTokens': 2048,
           }
-        ],
-        'generationConfig': {
-          'temperature': 0.1,
-          'topK': 1,
-          'topP': 1,
-          'maxOutputTokens': 2048,
-        }
-      }),
-    );
+        }),
+      );
 
-    if (response.statusCode == 200) {
-      final data = jsonDecode(response.body);
-      final text = data['candidates']?[0]?['content']?['parts']?[0]?['text'];
-      
-      // ✅ STRIP MARKDOWN CODE BLOCKS
-      if (text != null) {
-        String cleaned = text.trim();
-        cleaned = cleaned.replaceAll(RegExp(r'^```json\s*'), '');
-        cleaned = cleaned.replaceAll(RegExp(r'^```\s*'), '');
-        cleaned = cleaned.replaceAll(RegExp(r'\s*```$'), '');
-        return cleaned.trim();
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final text = data['candidates']?[0]?['content']?['parts']?[0]?['text'];
+        
+        // ✅ STRIP MARKDOWN CODE BLOCKS
+        if (text != null) {
+          String cleaned = text.trim();
+          cleaned = cleaned.replaceAll(RegExp(r'^```json\s*'), '');
+          cleaned = cleaned.replaceAll(RegExp(r'^```\s*'), '');
+          cleaned = cleaned.replaceAll(RegExp(r'\s*```$'), '');
+          return cleaned.trim();
+        }
       }
+      return null;
+    } catch (e) {
+      print('API call error: $e');
+      return null;
     }
-    return null;
-  } catch (e) {
-    print('API call error: $e');
-    return null;
   }
-}
 
   static bool _isValidRecipeData(Map<String, dynamic> data) {
     if (data.containsKey('error')) return false;

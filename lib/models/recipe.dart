@@ -13,6 +13,7 @@ class Recipe {
   final DateTime createdAt;
   final String? imageUrl;
   final int? cookingTimeMinutes;
+  final int? servings; // NEW: Number of servings/portions
 
   Recipe({
     required this.id,
@@ -24,9 +25,10 @@ class Recipe {
     required this.createdAt,
     this.imageUrl,
     this.cookingTimeMinutes,
+    this.servings, // NEW
   });
 
-//HTML ENCODING
+  //HTML ENCODING
   static final _htmlUnescape = HtmlUnescape();
 
   // Convert Recipe to Map for Firestore
@@ -40,6 +42,7 @@ class Recipe {
       'createdAt': createdAt.toIso8601String(),
       'imageUrl': imageUrl,
       'cookingTimeMinutes': cookingTimeMinutes,
+      'servings': servings, // NEW
     };
   }
 
@@ -67,6 +70,7 @@ class Recipe {
       createdAt: parsedCreatedAt,
       imageUrl: map['imageUrl'],
       cookingTimeMinutes: map['cookingTimeMinutes'],
+      servings: map['servings'], // NEW
     );
   }
 
@@ -84,98 +88,115 @@ class Recipe {
       'totalTime': cookingTimeMinutes != null ? 'PT${cookingTimeMinutes}M' : null,
       'image': imageUrl,
       'datePublished': createdAt.toIso8601String(),
+      'recipeYield': servings?.toString(), // NEW
     };
   }
 
   // Create from schema.org/Recipe format
-  // Replace the entire fromSchemaOrg factory method in recipe.dart:
+  factory Recipe.fromSchemaOrg(String userId, Map<String, dynamic> schemaData) {
+    List<Ingredient> ingredients = [];
 
-factory Recipe.fromSchemaOrg(String userId, Map<String, dynamic> schemaData) {
-  List<Ingredient> ingredients = [];
+    // Try multiple possible ingredient fields
+    final rawIngredients = schemaData['recipeIngredient'] ?? 
+                           schemaData['ingredients'] ??
+                           schemaData['ingredient'];
 
-  // Try multiple possible ingredient fields
-  final rawIngredients = schemaData['recipeIngredient'] ?? 
-                         schemaData['ingredients'] ??
-                         schemaData['ingredient'];
+    if (rawIngredients != null) {
+      List<String> ingredientStrings = [];
 
-  if (rawIngredients != null) {
-    List<String> ingredientStrings = [];
-
-    // Convert whatever format to List<String>
-    if (rawIngredients is String) {
-      // Single string - split by newlines or commas
-      ingredientStrings = rawIngredients
-          .split(RegExp(r'\n|,'))
-          .where((line) => line.trim().isNotEmpty)
-          .toList();
-    } 
-    else if (rawIngredients is List) {
-      // It's a list - but items might be strings, maps, or mixed
-      for (var item in rawIngredients) {
-        if (item is String) {
-          ingredientStrings.add(item);
-        } else if (item is Map) {
-          // Try to extract text from map (some sites do this)
-          final text = item['text'] ?? item['name'] ?? item['ingredient'] ?? item.toString();
-          ingredientStrings.add(text.toString());
-        } else {
-          ingredientStrings.add(item.toString());
+      // Convert whatever format to List<String>
+      if (rawIngredients is String) {
+        // Single string - split by newlines or commas
+        ingredientStrings = rawIngredients
+            .split(RegExp(r'\n|,'))
+            .where((line) => line.trim().isNotEmpty)
+            .toList();
+      } 
+      else if (rawIngredients is List) {
+        // It's a list - but items might be strings, maps, or mixed
+        for (var item in rawIngredients) {
+          if (item is String) {
+            ingredientStrings.add(item);
+          } else if (item is Map) {
+            // Try to extract text from map (some sites do this)
+            final text = item['text'] ?? item['name'] ?? item['ingredient'] ?? item.toString();
+            ingredientStrings.add(text.toString());
+          } else {
+            ingredientStrings.add(item.toString());
+          }
         }
       }
-    }
-    else if (rawIngredients is Map) {
-      // Single map object
-      final text = rawIngredients['text'] ?? rawIngredients['name'] ?? rawIngredients.toString();
-      ingredientStrings.add(text.toString());
-    }
-
-    // Now parse all ingredient strings
-    ingredients = ingredientStrings.map((text) {
-      final trimmed = text.trim();
-      if (trimmed.isEmpty) return null;
-
-      final String lower = trimmed.toLowerCase();
-
-      // Handle "ízlés szerint" pattern
-      if (lower.contains('ízlés szerint') && !RegExp(r'^\d').hasMatch(trimmed)) {
-        final name = trimmed.replaceAll(RegExp(r'\s*ízlés szerint\s*$', caseSensitive: false), '').trim();
-        return Ingredient(quantity: '', unit: 'ízlés szerint', name: name);
+      else if (rawIngredients is Map) {
+        // Single map object
+        final text = rawIngredients['text'] ?? rawIngredients['name'] ?? rawIngredients.toString();
+        ingredientStrings.add(text.toString());
       }
 
-      return _parseIngredient(trimmed);
-    }).whereType<Ingredient>().toList(); // Filter out nulls
-  }
+      // Now parse all ingredient strings
+      ingredients = ingredientStrings.map((text) {
+        final trimmed = text.trim();
+        if (trimmed.isEmpty) return null;
 
-  // Parse cooking time safely
-  int? cookingTime;
-  try {
-    final timeData = schemaData['totalTime'];
-    if (timeData is String) {
-      final match = RegExp(r'PT(\d+)M').firstMatch(timeData);
-      if (match != null) {
-        cookingTime = int.tryParse(match.group(1)!);
-      }
-    } else if (timeData is int) {
-      cookingTime = timeData;
+        final String lower = trimmed.toLowerCase();
+
+        // Handle "ízlés szerint" pattern
+        if (lower.contains('ízlés szerint') && !RegExp(r'^\d').hasMatch(trimmed)) {
+          final name = trimmed.replaceAll(RegExp(r'\s*ízlés szerint\s*$', caseSensitive: false), '').trim();
+          return Ingredient(quantity: '', unit: 'ízlés szerint', name: name);
+        }
+
+        return _parseIngredient(trimmed);
+      }).whereType<Ingredient>().toList(); // Filter out nulls
     }
-  } catch (e) {
-    print('⚠️ Could not parse cooking time: $e');
+
+    // Parse cooking time safely
+    int? cookingTime;
+    try {
+      final timeData = schemaData['totalTime'];
+      if (timeData is String) {
+        final match = RegExp(r'PT(\d+)M').firstMatch(timeData);
+        if (match != null) {
+          cookingTime = int.tryParse(match.group(1)!);
+        }
+      } else if (timeData is int) {
+        cookingTime = timeData;
+      }
+    } catch (e) {
+      print('⚠️ Could not parse cooking time: $e');
+    }
+
+    // NEW: Parse servings/portions
+    int? servings;
+    try {
+      final yieldData = schemaData['recipeYield'] ?? schemaData['servings'];
+      if (yieldData != null) {
+        if (yieldData is int) {
+          servings = yieldData;
+        } else if (yieldData is String) {
+          // Try to extract number from strings like "4 servings", "6 adag", "8", etc.
+          final match = RegExp(r'(\d+)').firstMatch(yieldData);
+          if (match != null) {
+            servings = int.tryParse(match.group(1)!);
+          }
+        }
+      }
+    } catch (e) {
+      print('⚠️ Could not parse servings: $e');
+    }
+
+    return Recipe(
+      id: '',
+      userId: userId,
+      name: _parseToString(schemaData['name'], fallback: 'Névtelen recept'),
+      ingredients: ingredients,
+      instructions: _parseInstructions(schemaData['recipeInstructions']),
+      category: _convertToAppCategory(schemaData['recipeCategory']),
+      createdAt: DateTime.now(),
+      imageUrl: _parseImage(schemaData['image']),
+      cookingTimeMinutes: cookingTime,
+      servings: servings, // NEW
+    );
   }
-
-  
-
-  return Recipe(
-    id: '',
-    userId: userId,
-    name: _parseToString(schemaData['name'], fallback: 'Névtelen recept'),
-    ingredients: ingredients,
-    instructions: _parseInstructions(schemaData['recipeInstructions']),
-    category: _convertToAppCategory(schemaData['recipeCategory']),
-    createdAt: DateTime.now(),
-    imageUrl: _parseImage(schemaData['image']),
-    cookingTimeMinutes: cookingTime,
-  );
-}
 
   // Parse a single ingredient string
   static Ingredient _parseIngredient(String text) {
@@ -216,57 +237,57 @@ factory Recipe.fromSchemaOrg(String userId, Map<String, dynamic> schemaData) {
   }
 
   // Parse quantity (handles: 2, 2.5, 2,5, 0.5, 0,5, 1/2, 1 1/2, etc.)
-static Map<String, dynamic>? _parseQuantity(List<String> parts) {
-  if (parts.isEmpty) return null;
+  static Map<String, dynamic>? _parseQuantity(List<String> parts) {
+    if (parts.isEmpty) return null;
 
-  final first = parts[0];
-  
-  // Check for decimal with DOT (2.5, 0.5, etc.)
-  final decimalDotMatch = RegExp(r'^(\d+)\.(\d+)$').firstMatch(first);
-  if (decimalDotMatch != null) {
-    final value = '${decimalDotMatch.group(1)}.${decimalDotMatch.group(2)}';
-    return {'value': value, 'endIndex': 1};
-  }
-
-  // Check for decimal with COMMA (2,5, 0,5, etc. - Hungarian format)
-  final decimalCommaMatch = RegExp(r'^(\d+),(\d+)$').firstMatch(first);
-  if (decimalCommaMatch != null) {
-    // Convert comma to dot
-    final value = '${decimalCommaMatch.group(1)}.${decimalCommaMatch.group(2)}';
-    return {'value': value, 'endIndex': 1};
-  }
-
-  // Check for integer only (2, 5, 500)
-  final intMatch = RegExp(r'^(\d+)$').firstMatch(first);
-  if (intMatch != null) {
-    return {'value': intMatch.group(1)!, 'endIndex': 1};
-  }
-
-  // Check for fraction (1/2, 3/4, etc.)
-  final fractionMatch = RegExp(r'^(\d+)/(\d+)$').firstMatch(first);
-  if (fractionMatch != null) {
-    final numerator = int.parse(fractionMatch.group(1)!);
-    final denominator = int.parse(fractionMatch.group(2)!);
-    final decimal = (numerator / denominator).toStringAsFixed(2);
-    return {'value': decimal, 'endIndex': 1};
-  }
-
-  // Check for mixed number (1 1/2 - two parts)
-  if (parts.length >= 2) {
-    final wholeMatch = RegExp(r'^(\d+)$').firstMatch(first);
-    final fractionMatch2 = RegExp(r'^(\d+)/(\d+)$').firstMatch(parts[1]);
+    final first = parts[0];
     
-    if (wholeMatch != null && fractionMatch2 != null) {
-      final whole = int.parse(wholeMatch.group(1)!);
-      final numerator = int.parse(fractionMatch2.group(1)!);
-      final denominator = int.parse(fractionMatch2.group(2)!);
-      final total = whole + (numerator / denominator);
-      return {'value': total.toStringAsFixed(2), 'endIndex': 2};
+    // Check for decimal with DOT (2.5, 0.5, etc.)
+    final decimalDotMatch = RegExp(r'^(\d+)\.(\d+)$').firstMatch(first);
+    if (decimalDotMatch != null) {
+      final value = '${decimalDotMatch.group(1)}.${decimalDotMatch.group(2)}';
+      return {'value': value, 'endIndex': 1};
     }
-  }
 
-  return null;
-}
+    // Check for decimal with COMMA (2,5, 0,5, etc. - Hungarian format)
+    final decimalCommaMatch = RegExp(r'^(\d+),(\d+)$').firstMatch(first);
+    if (decimalCommaMatch != null) {
+      // Convert comma to dot
+      final value = '${decimalCommaMatch.group(1)}.${decimalCommaMatch.group(2)}';
+      return {'value': value, 'endIndex': 1};
+    }
+
+    // Check for integer only (2, 5, 500)
+    final intMatch = RegExp(r'^(\d+)$').firstMatch(first);
+    if (intMatch != null) {
+      return {'value': intMatch.group(1)!, 'endIndex': 1};
+    }
+
+    // Check for fraction (1/2, 3/4, etc.)
+    final fractionMatch = RegExp(r'^(\d+)/(\d+)$').firstMatch(first);
+    if (fractionMatch != null) {
+      final numerator = int.parse(fractionMatch.group(1)!);
+      final denominator = int.parse(fractionMatch.group(2)!);
+      final decimal = (numerator / denominator).toStringAsFixed(2);
+      return {'value': decimal, 'endIndex': 1};
+    }
+
+    // Check for mixed number (1 1/2 - two parts)
+    if (parts.length >= 2) {
+      final wholeMatch = RegExp(r'^(\d+)$').firstMatch(first);
+      final fractionMatch2 = RegExp(r'^(\d+)/(\d+)$').firstMatch(parts[1]);
+      
+      if (wholeMatch != null && fractionMatch2 != null) {
+        final whole = int.parse(wholeMatch.group(1)!);
+        final numerator = int.parse(fractionMatch2.group(1)!);
+        final denominator = int.parse(fractionMatch2.group(2)!);
+        final total = whole + (numerator / denominator);
+        return {'value': total.toStringAsFixed(2), 'endIndex': 2};
+      }
+    }
+
+    return null;
+  }
 
   // Parse unit (handles common units - all normalized via UnitNormalizer)
   static Map<String, dynamic>? _parseUnit(List<String> parts, int startIndex) {
@@ -413,6 +434,7 @@ static Map<String, dynamic>? _parseQuantity(List<String> parts) {
     DateTime? createdAt,
     String? imageUrl,
     int? cookingTimeMinutes,
+    int? servings, // NEW
   }) {
     return Recipe(
       id: id ?? this.id,
@@ -424,6 +446,7 @@ static Map<String, dynamic>? _parseQuantity(List<String> parts) {
       createdAt: createdAt ?? this.createdAt,
       imageUrl: imageUrl ?? this.imageUrl,
       cookingTimeMinutes: cookingTimeMinutes ?? this.cookingTimeMinutes,
+      servings: servings ?? this.servings, // NEW
     );
   }
 }
@@ -453,5 +476,31 @@ class Ingredient {
       quantity: map['quantity'] ?? '',
       unit: map['unit'] ?? 'db',
     );
+  }
+
+  // NEW: Helper to scale ingredient quantity
+  Ingredient scaleQuantity(double multiplier) {
+    if (quantity.isEmpty || unit == 'ízlés szerint') {
+      return this; // Don't scale "to taste" items or empty quantities
+    }
+
+    try {
+      final numericQuantity = double.parse(quantity);
+      final scaledQuantity = numericQuantity * multiplier;
+      
+      // Format nicely: if it's a whole number, show without decimals
+      final formattedQuantity = scaledQuantity == scaledQuantity.roundToDouble()
+          ? scaledQuantity.round().toString()
+          : scaledQuantity.toStringAsFixed(1);
+      
+      return Ingredient(
+        name: name,
+        quantity: formattedQuantity,
+        unit: unit,
+      );
+    } catch (e) {
+      // If parsing fails, return unchanged
+      return this;
+    }
   }
 }

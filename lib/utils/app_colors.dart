@@ -6,6 +6,7 @@ class AppColors {
   static const cream = Color(0xFFFFF1CB);      // Light cream
   static const skyBlue = Color(0xFFC2E2FA);    // Light blue
   static const lavender = Color(0xFFB7A3E3);   // Light purple
+  static const sage = Color(0xFF9CAF88);       // Soft sage green (for servings)
   
   // Derived colors
   static const primary = coral;

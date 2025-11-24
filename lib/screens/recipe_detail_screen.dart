@@ -51,14 +51,31 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
   late Recipe _recipe;
   bool _isLoading = false;
   bool _isCookedToday = false;
-  late List<bool> _selectedIngredients; // Track selected ingredients
+  late List<bool> _selectedIngredients;
+  late int _currentServings; // NEW: Track current serving size
+  late List<Ingredient> _scaledIngredients; // NEW: Store scaled ingredients
 
   @override
   void initState() {
     super.initState();
     _recipe = widget.recipe;
-    _selectedIngredients = List.filled(_recipe.ingredients.length, false); // All selected by default
+    _currentServings = _recipe.servings ?? 1; // NEW: Initialize with recipe servings
+    _scaledIngredients = List.from(_recipe.ingredients); // NEW: Start with original ingredients
+    _selectedIngredients = List.filled(_recipe.ingredients.length, false);
     _checkIfCookedToday();
+  }
+
+  // NEW: Method to recalculate ingredients based on serving size
+  void _updateServings(int newServings) {
+    if (_recipe.servings == null || _recipe.servings == 0) return;
+    
+    setState(() {
+      _currentServings = newServings;
+      final multiplier = newServings / _recipe.servings!;
+      _scaledIngredients = _recipe.ingredients
+          .map((ingredient) => ingredient.scaleQuantity(multiplier))
+          .toList();
+    });
   }
 
   void _toggleAllIngredients() {
@@ -148,7 +165,9 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
       if (doc.exists && mounted) {
         setState(() {
           _recipe = Recipe.fromMap(doc.id, doc.data() as Map<String, dynamic>);
-          _selectedIngredients = List.filled(_recipe.ingredients.length, false); // Changed to false
+          _currentServings = _recipe.servings ?? 1;
+          _scaledIngredients = List.from(_recipe.ingredients);
+          _selectedIngredients = List.filled(_recipe.ingredients.length, false);
         });
       }
     } catch (e) {
@@ -165,11 +184,11 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
       final userId = FirebaseAuth.instance.currentUser?.uid;
       if (userId == null) throw Exception('Nincs bejelentkezve');
 
-      // Get only selected ingredients
+      // Get only selected ingredients (use scaled versions)
       final selectedIngredientsList = <Ingredient>[];
-      for (int i = 0; i < _recipe.ingredients.length; i++) {
+      for (int i = 0; i < _scaledIngredients.length; i++) {
         if (_selectedIngredients[i]) {
-          selectedIngredientsList.add(_recipe.ingredients[i]);
+          selectedIngredientsList.add(_scaledIngredients[i]);
         }
       }
 
@@ -266,6 +285,9 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
       buffer.writeln('📖 ${_recipe.name}');
       buffer.writeln();
       buffer.writeln('Kategória: ${_recipe.category}');
+      if (_recipe.servings != null) {
+        buffer.writeln('Adag: ${_recipe.servings}');
+      }
       buffer.writeln();
       buffer.writeln('🛒 Hozzávalók:');
       for (var ingredient in _recipe.ingredients) {
@@ -326,7 +348,7 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
       final fileName = '${_recipe.name.replaceAll(RegExp(r'[^\w\s-]'), '_')}.fozli';
       final filePath = '${downloadsDir.path}/$fileName';
       final file = File(filePath);
-      await file.writeAsString(jsonData, encoding: utf8); // UTF-8 encoding!
+      await file.writeAsString(jsonData, encoding: utf8);
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -377,7 +399,7 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
       final fileName = '${_recipe.name.replaceAll(RegExp(r'[^\w\s-]'), '_')}.fozli';
       final filePath = '${tempDir.path}/$fileName';
       final file = File(filePath);
-      await file.writeAsString(jsonData, encoding: utf8); // UTF-8 encoding!
+      await file.writeAsString(jsonData, encoding: utf8);
 
       await Share.shareXFiles(
         [XFile(filePath)],
@@ -440,6 +462,7 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
   Widget build(BuildContext context) {
     final allSelected = _selectedIngredients.every((selected) => selected);
     final selectedCount = _selectedIngredients.where((selected) => selected).length;
+    final hasServings = _recipe.servings != null && _recipe.servings! > 0;
 
     return Scaffold(
       appBar: AppBar(
@@ -477,10 +500,10 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
-    : ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-                // Category and Cooking Time bubbles
+          : ListView(
+              padding: const EdgeInsets.all(16),
+              children: [
+                // Category, Cooking Time, and Servings bubbles
                 Wrap(
                   alignment: WrapAlignment.center,
                   spacing: 8,
@@ -518,12 +541,12 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
                         ],
                       ),
                     ),
-                    // Cooking time bubble (same height as category)
+                    // Cooking time bubble
                     if (_recipe.cookingTimeMinutes != null)
                       Container(
                         padding: const EdgeInsets.symmetric(
                           horizontal: 16,
-                          vertical: 10, // Same padding as category
+                          vertical: 10,
                         ),
                         decoration: BoxDecoration(
                           color: AppColors.lavender.withOpacity(0.2),
@@ -533,14 +556,14 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            const Icon(Icons.timer, size: 20, color: AppColors.lavender), // Same size as emoji
+                            const Icon(Icons.timer, size: 20, color: AppColors.lavender),
                             const SizedBox(width: 8),
                             Text(
                               '${_recipe.cookingTimeMinutes} perc',
                               style: const TextStyle(
                                 color: AppColors.lavender,
-                                fontWeight: FontWeight.bold, // Match category style
-                                fontSize: 16, // Same as category
+                                fontWeight: FontWeight.bold,
+                                fontSize: 16,
                               ),
                             ),
                           ],
@@ -550,16 +573,16 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
                 ),
                 const SizedBox(height: 16),
 
-                // Recipe Title - NEW! (below bubbles, above image)
-  Text(
-    _recipe.name,
-    style: const TextStyle(
-      fontSize: 24,
-      fontWeight: FontWeight.bold,
-    ),
-    textAlign: TextAlign.center,
-  ),
-  const SizedBox(height: 16),
+                // Recipe Title
+                Text(
+                  _recipe.name,
+                  style: const TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 16),
 
                 // Recipe Image
                 if (_recipe.imageUrl != null && _recipe.imageUrl!.isNotEmpty)
@@ -596,7 +619,60 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
 
                 const SizedBox(height: 16),
 
-                // Ingredients Card
+                // NEW: Servings control (only show if servings data exists)
+                if (hasServings)
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text(
+                            'Adag:',
+                            style: Theme.of(context).textTheme.titleMedium,
+                          ),
+                          const SizedBox(width: 16),
+                          IconButton(
+                            onPressed: _currentServings > 1
+                                ? () => _updateServings(_currentServings - 1)
+                                : null,
+                            icon: const Icon(Icons.remove_circle_outline),
+                            color: AppColors.coral,
+                            disabledColor: Colors.grey[300],
+                          ),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 20,
+                              vertical: 8,
+                            ),
+                            decoration: BoxDecoration(
+                              color: AppColors.sage.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Text(
+                              '$_currentServings',
+                              style: const TextStyle(
+                                fontSize: 20,
+                                fontWeight: FontWeight.bold,
+                                color: AppColors.sage,
+                              ),
+                            ),
+                          ),
+                          IconButton(
+                            onPressed: _currentServings < 99
+                                ? () => _updateServings(_currentServings + 1)
+                                : null,
+                            icon: const Icon(Icons.add_circle_outline),
+                            color: AppColors.coral,
+                            disabledColor: Colors.grey[300],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                if (hasServings) const SizedBox(height: 16),
+
+                // Ingredients Card (now uses scaled ingredients)
                 Card(
                   child: Padding(
                     padding: const EdgeInsets.all(16),
@@ -630,7 +706,7 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
                           ],
                         ),
                         const Divider(height: 24),
-                        ..._recipe.ingredients.asMap().entries.map((entry) {
+                        ..._scaledIngredients.asMap().entries.map((entry) {
                           final index = entry.key;
                           final ingredient = entry.value;
                           return InkWell(

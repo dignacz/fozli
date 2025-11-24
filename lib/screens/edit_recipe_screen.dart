@@ -22,6 +22,7 @@ class _EditRecipeScreenState extends State<EditRecipeScreen> {
   late TextEditingController _instructionsController;
   late TextEditingController _imageUrlController;
   late TextEditingController _cookingTimeController;
+  late TextEditingController _servingsController; // NEW
   late List<IngredientInput> _ingredients;
   late String _selectedCategory;
   bool _isLoading = false;
@@ -53,6 +54,9 @@ class _EditRecipeScreenState extends State<EditRecipeScreen> {
     _imageUrlController = TextEditingController(text: widget.recipe.imageUrl ?? '');
     _cookingTimeController = TextEditingController(
       text: widget.recipe.cookingTimeMinutes?.toString() ?? ''
+    );
+    _servingsController = TextEditingController( // NEW
+      text: widget.recipe.servings?.toString() ?? ''
     );
     _selectedCategory = widget.recipe.category;
     
@@ -109,6 +113,15 @@ class _EditRecipeScreenState extends State<EditRecipeScreen> {
         }
       }
 
+      // NEW: Parse servings
+      int? servings;
+      if (_servingsController.text.isNotEmpty) {
+        servings = int.tryParse(_servingsController.text);
+        if (servings != null && servings < 1) {
+          servings = null;
+        }
+      }
+
       final updatedRecipe = Recipe(
         id: widget.recipe.id,
         userId: userId,
@@ -128,6 +141,7 @@ class _EditRecipeScreenState extends State<EditRecipeScreen> {
             ? null
             : _imageUrlController.text.trim(),
         cookingTimeMinutes: cookingTime,
+        servings: servings, // NEW
         createdAt: widget.recipe.createdAt,
       );
 
@@ -237,26 +251,57 @@ class _EditRecipeScreenState extends State<EditRecipeScreen> {
             ),
             const SizedBox(height: 16),
 
-            // Cooking Time
-            TextFormField(
-              controller: _cookingTimeController,
-              decoration: const InputDecoration(
-                labelText: 'Elkészítési idő (perc, opcionális)',
-                border: OutlineInputBorder(),
-                prefixIcon: Icon(Icons.timer),
-                hintText: '30',
-              ),
-              keyboardType: TextInputType.number,
-              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-              validator: (value) {
-                if (value != null && value.isNotEmpty) {
-                  final minutes = int.tryParse(value);
-                  if (minutes == null || minutes < 0) {
-                    return 'Érvénytelen idő';
-                  }
-                }
-                return null;
-              },
+            // NEW: Two-column layout for Cooking Time and Servings
+            Row(
+              children: [
+                // Cooking Time
+                Expanded(
+                  child: TextFormField(
+                    controller: _cookingTimeController,
+                    decoration: const InputDecoration(
+                      labelText: 'Idő (perc)',
+                      border: OutlineInputBorder(),
+                      prefixIcon: Icon(Icons.timer),
+                      hintText: '30',
+                    ),
+                    keyboardType: TextInputType.number,
+                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                    validator: (value) {
+                      if (value != null && value.isNotEmpty) {
+                        final minutes = int.tryParse(value);
+                        if (minutes == null || minutes < 0) {
+                          return 'Érvénytelen';
+                        }
+                      }
+                      return null;
+                    },
+                  ),
+                ),
+                const SizedBox(width: 16),
+                // Servings
+                Expanded(
+                  child: TextFormField(
+                    controller: _servingsController,
+                    decoration: const InputDecoration(
+                      labelText: 'Adag',
+                      border: OutlineInputBorder(),
+                      prefixIcon: Icon(Icons.restaurant),
+                      hintText: '4',
+                    ),
+                    keyboardType: TextInputType.number,
+                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                    validator: (value) {
+                      if (value != null && value.isNotEmpty) {
+                        final servings = int.tryParse(value);
+                        if (servings == null || servings < 1) {
+                          return 'Min 1';
+                        }
+                      }
+                      return null;
+                    },
+                  ),
+                ),
+              ],
             ),
             const SizedBox(height: 24),
 
@@ -407,6 +452,7 @@ class _EditRecipeScreenState extends State<EditRecipeScreen> {
     _instructionsController.dispose();
     _imageUrlController.dispose();
     _cookingTimeController.dispose();
+    _servingsController.dispose(); // NEW
     for (var ingredient in _ingredients) {
       ingredient.dispose();
     }

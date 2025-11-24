@@ -7,7 +7,7 @@ import 'package:intl/intl.dart';
 import '../models/cooking_log.dart';
 import '../models/recipe.dart';
 import '../utils/app_colors.dart';
-import '../utils/recipe_categories.dart'; // Add this import
+import '../utils/recipe_categories.dart';
 
 class CalendarScreen extends StatefulWidget {
   const CalendarScreen({super.key});
@@ -21,14 +21,14 @@ class _CalendarScreenState extends State<CalendarScreen> {
   DateTime _focusedDay = DateTime.now();
   DateTime? _selectedDay;
   Map<DateTime, List<CookingLog>> _events = {};
-  Map<String, Recipe> _recipesCache = {}; // Add recipe cache
+  Map<String, Recipe> _recipesCache = {};
 
   @override
   void initState() {
     super.initState();
     _selectedDay = _focusedDay;
     _loadEvents();
-    _loadRecipes(); // Load recipes for category display
+    _loadRecipes();
   }
 
   Future<void> _loadRecipes() async {
@@ -90,7 +90,6 @@ class _CalendarScreenState extends State<CalendarScreen> {
     final userId = FirebaseAuth.instance.currentUser?.uid;
     if (userId == null) return;
 
-    // Get all recipes for selection
     final recipesSnapshot = await FirebaseFirestore.instance
         .collection('recipes')
         .where('userId', isEqualTo: userId)
@@ -280,16 +279,27 @@ class _CalendarScreenState extends State<CalendarScreen> {
 
   Widget _buildEventList() {
     final events = _getEventsForDay(_selectedDay ?? DateTime.now());
+    final selectedDate = _selectedDay ?? DateTime.now();
+    final today = DateTime.now();
+    final normalizedToday = DateTime(today.year, today.month, today.day);
+    final normalizedSelected = DateTime(selectedDate.year, selectedDate.month, selectedDate.day);
+    final isFuture = normalizedSelected.isAfter(normalizedToday);
 
     if (events.isEmpty) {
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.calendar_today, size: 60, color: Colors.grey[300]),
+            Icon(
+              isFuture ? Icons.event_available : Icons.calendar_today,
+              size: 60,
+              color: Colors.grey[300],
+            ),
             const SizedBox(height: 16),
             Text(
-              'Ezen a napon nem főztél semmit',
+              isFuture 
+                ? 'Még nincs főzés betervezve'
+                : 'Ezen a napon nem főztél semmit',
               style: TextStyle(fontSize: 16, color: Colors.grey[600]),
             ),
             const SizedBox(height: 8),
@@ -309,7 +319,6 @@ class _CalendarScreenState extends State<CalendarScreen> {
         final log = events[index];
         final recipe = _recipesCache[log.recipeId];
         
-        // Get category info if recipe exists, otherwise use default
         final categoryData = recipe != null 
             ? RecipeCategories.getCategory(recipe.category)
             : RecipeCategories.getCategory('Egyéb');

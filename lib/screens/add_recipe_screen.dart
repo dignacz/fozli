@@ -20,6 +20,7 @@ class _AddRecipeScreenState extends State<AddRecipeScreen> {
   final _instructionsController = TextEditingController();
   final _imageUrlController = TextEditingController();
   final _cookingTimeController = TextEditingController();
+  final _servingsController = TextEditingController(); // NEW
   final List<IngredientInput> _ingredients = [IngredientInput()];
   bool _isLoading = false;
   String _selectedCategory = 'Főétel';
@@ -85,6 +86,15 @@ class _AddRecipeScreenState extends State<AddRecipeScreen> {
         }
       }
 
+      // NEW: Parse servings
+      int? servings;
+      if (_servingsController.text.isNotEmpty) {
+        servings = int.tryParse(_servingsController.text);
+        if (servings != null && servings < 1) {
+          servings = null;
+        }
+      }
+
       final recipe = Recipe(
         id: '',
         userId: userId,
@@ -104,6 +114,7 @@ class _AddRecipeScreenState extends State<AddRecipeScreen> {
             ? null
             : _imageUrlController.text.trim(),
         cookingTimeMinutes: cookingTime,
+        servings: servings, // NEW
         createdAt: DateTime.now(),
       );
 
@@ -210,26 +221,57 @@ class _AddRecipeScreenState extends State<AddRecipeScreen> {
             ),
             const SizedBox(height: 16),
 
-            // Cooking Time
-            TextFormField(
-              controller: _cookingTimeController,
-              decoration: const InputDecoration(
-                labelText: 'Elkészítési idő (perc, opcionális)',
-                border: OutlineInputBorder(),
-                prefixIcon: Icon(Icons.timer),
-                hintText: '30',
-              ),
-              keyboardType: TextInputType.number,
-              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-              validator: (value) {
-                if (value != null && value.isNotEmpty) {
-                  final minutes = int.tryParse(value);
-                  if (minutes == null || minutes < 0) {
-                    return 'Érvénytelen idő';
-                  }
-                }
-                return null;
-              },
+            // NEW: Two-column layout for Cooking Time and Servings
+            Row(
+              children: [
+                // Cooking Time
+                Expanded(
+                  child: TextFormField(
+                    controller: _cookingTimeController,
+                    decoration: const InputDecoration(
+                      labelText: 'Idő (perc)',
+                      border: OutlineInputBorder(),
+                      prefixIcon: Icon(Icons.timer),
+                      hintText: '30',
+                    ),
+                    keyboardType: TextInputType.number,
+                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                    validator: (value) {
+                      if (value != null && value.isNotEmpty) {
+                        final minutes = int.tryParse(value);
+                        if (minutes == null || minutes < 0) {
+                          return 'Érvénytelen';
+                        }
+                      }
+                      return null;
+                    },
+                  ),
+                ),
+                const SizedBox(width: 16),
+                // Servings
+                Expanded(
+                  child: TextFormField(
+                    controller: _servingsController,
+                    decoration: const InputDecoration(
+                      labelText: 'Adag',
+                      border: OutlineInputBorder(),
+                      prefixIcon: Icon(Icons.restaurant),
+                      hintText: '4',
+                    ),
+                    keyboardType: TextInputType.number,
+                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                    validator: (value) {
+                      if (value != null && value.isNotEmpty) {
+                        final servings = int.tryParse(value);
+                        if (servings == null || servings < 1) {
+                          return 'Min 1';
+                        }
+                      }
+                      return null;
+                    },
+                  ),
+                ),
+              ],
             ),
             const SizedBox(height: 24),
 
@@ -380,6 +422,7 @@ class _AddRecipeScreenState extends State<AddRecipeScreen> {
     _instructionsController.dispose();
     _imageUrlController.dispose();
     _cookingTimeController.dispose();
+    _servingsController.dispose(); // NEW
     for (var ingredient in _ingredients) {
       ingredient.dispose();
     }
