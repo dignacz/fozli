@@ -1,9 +1,10 @@
-//models/shopping_list_item.dart
-import 'package:cloud_firestore/cloud_firestore.dart'; // Add this import
+// models/shopping_list_item.dart
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 class ShoppingListItem {
   final String id;
   final String userId;
+  final String listId; // NEW: Link to parent shopping list (optional for backward compatibility)
   final String name;
   final String quantity;
   final String unit;
@@ -13,6 +14,7 @@ class ShoppingListItem {
   ShoppingListItem({
     required this.id,
     required this.userId,
+    this.listId = '', // Default empty for backward compatibility
     required this.name,
     required this.quantity,
     required this.unit,
@@ -21,7 +23,7 @@ class ShoppingListItem {
   });
 
   Map<String, dynamic> toMap() {
-    return {
+    final map = {
       'userId': userId,
       'name': name,
       'quantity': quantity,
@@ -29,6 +31,13 @@ class ShoppingListItem {
       'checked': checked,
       'createdAt': createdAt.toIso8601String(),
     };
+    
+    // Only include listId if it's not empty (for new multi-list items)
+    if (listId.isNotEmpty) {
+      map['listId'] = listId;
+    }
+    
+    return map;
   }
 
   factory ShoppingListItem.fromMap(String id, Map<String, dynamic> map) {
@@ -45,6 +54,7 @@ class ShoppingListItem {
     return ShoppingListItem(
       id: id,
       userId: map['userId'] ?? '',
+      listId: map['listId'] ?? '', // Optional, defaults to empty for old items
       name: map['name'] ?? '',
       quantity: map['quantity'] ?? '',
       unit: map['unit'] ?? 'db',
@@ -56,6 +66,7 @@ class ShoppingListItem {
   ShoppingListItem copyWith({
     String? id,
     String? userId,
+    String? listId,
     String? name,
     String? quantity,
     String? unit,
@@ -65,6 +76,7 @@ class ShoppingListItem {
     return ShoppingListItem(
       id: id ?? this.id,
       userId: userId ?? this.userId,
+      listId: listId ?? this.listId,
       name: name ?? this.name,
       quantity: quantity ?? this.quantity,
       unit: unit ?? this.unit,

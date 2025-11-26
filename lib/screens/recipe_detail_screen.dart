@@ -9,6 +9,7 @@ import 'dart:io';
 import 'package:share_plus/share_plus.dart';
 import '../models/recipe.dart';
 import '../models/shopping_list_item.dart';
+import '../models/shopping_list.dart';
 import '../models/cooking_log.dart';
 import '../utils/app_colors.dart';
 import '../screens/edit_recipe_screen.dart';
@@ -52,20 +53,19 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
   bool _isLoading = false;
   bool _isCookedToday = false;
   late List<bool> _selectedIngredients;
-  late int _currentServings; // NEW: Track current serving size
-  late List<Ingredient> _scaledIngredients; // NEW: Store scaled ingredients
+  late int _currentServings;
+  late List<Ingredient> _scaledIngredients;
 
   @override
   void initState() {
     super.initState();
     _recipe = widget.recipe;
-    _currentServings = _recipe.servings ?? 1; // NEW: Initialize with recipe servings
-    _scaledIngredients = List.from(_recipe.ingredients); // NEW: Start with original ingredients
+    _currentServings = _recipe.servings ?? 1;
+    _scaledIngredients = List.from(_recipe.ingredients);
     _selectedIngredients = List.filled(_recipe.ingredients.length, false);
     _checkIfCookedToday();
   }
 
-  // NEW: Method to recalculate ingredients based on serving size
   void _updateServings(int newServings) {
     if (_recipe.servings == null || _recipe.servings == 0) return;
     
@@ -179,6 +179,7 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
     }
   }
 
+  // NEW: Show shopping list selection dialog
   Future<void> _addIngredientsToShoppingList(BuildContext context) async {
     try {
       final userId = FirebaseAuth.instance.currentUser?.uid;
@@ -202,30 +203,94 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
         return;
       }
 
+      // Fetch all shopping lists
+      final listsSnapshot = await FirebaseFirestore.instance
+          .collection('shoppingLists')
+          .where('userId', isEqualTo: userId)
+          .get();
+
+      final allLists = listsSnapshot.docs
+          .map((doc) => ShoppingList.fromMap(doc.id, doc.data()))
+          .toList();
+
+      // Filter visible lists (seasonal logic)
+      final visibleLists = <ShoppingList>[];
+      for (var list in allLists) {
+        final shouldShow = await SeasonalShoppingLists.shouldShowSeasonalList(list.id, userId);
+        if (shouldShow) {
+          visibleLists.add(list);
+        }
+      }
+
+      // Sort: seasonal first, then by creation date
+      visibleLists.sort((a, b) {
+        final aIsSeasonal = SeasonalShoppingLists.isSeasonalList(a.id);
+        final bIsSeasonal = SeasonalShoppingLists.isSeasonalList(b.id);
+        
+        if (aIsSeasonal && !bIsSeasonal) return -1;
+        if (!aIsSeasonal && bIsSeasonal) return 1;
+        
+        return b.createdAt.compareTo(a.createdAt);
+      });
+
+      if (visibleLists.isEmpty) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Először hozz létre egy bevásárlólistát!'),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        }
+        return;
+      }
+
+      // Show selection dialog
+      final selectedLists = await showDialog<List<ShoppingList>>(
+        context: context,
+        builder: (context) => _ShoppingListSelectionDialog(
+          lists: visibleLists,
+          ingredientCount: selectedIngredientsList.length,
+        ),
+      );
+
+      if (selectedLists == null || selectedLists.isEmpty) return;
+
+      // Add ingredients to selected lists
       final batch = FirebaseFirestore.instance.batch();
 
-      for (var ingredient in selectedIngredientsList) {
-        final item = ShoppingListItem(
-          id: '',
-          userId: userId,
-          name: ingredient.name,
-          quantity: ingredient.quantity,
-          unit: ingredient.unit,
-          checked: false,
-          createdAt: DateTime.now(),
-        );
+      for (var list in selectedLists) {
+        for (var ingredient in selectedIngredientsList) {
+          final item = ShoppingListItem(
+            id: '',
+            userId: userId,
+            listId: list.id, // NEW: Add to specific list
+            name: ingredient.name,
+            quantity: ingredient.quantity,
+            unit: ingredient.unit,
+            checked: false,
+            createdAt: DateTime.now(),
+          );
 
-        final docRef =
-            FirebaseFirestore.instance.collection('shoppingList').doc();
-        batch.set(docRef, item.toMap());
+          final docRef = FirebaseFirestore.instance
+              .collection('shoppingListItems') // NEW collection
+              .doc();
+          batch.set(docRef, item.toMap());
+        }
       }
 
       await batch.commit();
 
       if (context.mounted) {
+        final listNames = selectedLists.length == 1
+            ? selectedLists.first.name
+            : '${selectedLists.length} listához';
+        
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('${selectedIngredientsList.length} hozzávaló hozzáadva a bevásárlólistához!'),
+            content: Text(
+              '${selectedIngredientsList.length} hozzávaló hozzáadva: $listNames'
+            ),
             backgroundColor: Colors.green,
           ),
         );
@@ -619,7 +684,7 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
 
                 const SizedBox(height: 16),
 
-                // NEW: Servings control (only show if servings data exists)
+                // Servings control (only show if servings data exists)
                 if (hasServings)
                   Card(
                     child: Padding(
@@ -860,6 +925,98 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
           ],
         ),
       ),
+    );
+  }
+}
+
+// Shopping List Selection Dialog
+class _ShoppingListSelectionDialog extends StatefulWidget {
+  final List<ShoppingList> lists;
+  final int ingredientCount;
+
+  const _ShoppingListSelectionDialog({
+    required this.lists,
+    required this.ingredientCount,
+  });
+
+  @override
+  State<_ShoppingListSelectionDialog> createState() => _ShoppingListSelectionDialogState();
+}
+
+class _ShoppingListSelectionDialogState extends State<_ShoppingListSelectionDialog> {
+  final Set<String> _selectedListIds = {};
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text('Listához adás (${widget.ingredientCount} db)'),
+      content: SizedBox(
+        width: double.maxFinite,
+        child: ListView.builder(
+          shrinkWrap: true,
+          itemCount: widget.lists.length,
+          itemBuilder: (context, index) {
+            final list = widget.lists[index];
+            final isSelected = _selectedListIds.contains(list.id);
+            final color = Color(int.parse('FF${list.color}', radix: 16));
+            
+            return CheckboxListTile(
+              value: isSelected,
+              onChanged: (value) {
+                setState(() {
+                  if (value == true) {
+                    _selectedListIds.add(list.id);
+                  } else {
+                    _selectedListIds.remove(list.id);
+                  }
+                });
+              },
+              secondary: Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: color.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Center(
+                  child: Text(
+                    list.emoji,
+                    style: const TextStyle(fontSize: 20),
+                  ),
+                ),
+              ),
+              title: Text(list.name),
+              subtitle: list.isSystem
+                  ? const Text(
+                      'Szezonális lista',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontStyle: FontStyle.italic,
+                      ),
+                    )
+                  : null,
+              activeColor: AppColors.coral,
+            );
+          },
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Mégse'),
+        ),
+        TextButton(
+          onPressed: _selectedListIds.isEmpty
+              ? null
+              : () {
+                  final selectedLists = widget.lists
+                      .where((l) => _selectedListIds.contains(l.id))
+                      .toList();
+                  Navigator.pop(context, selectedLists);
+                },
+          child: Text('Hozzáadás (${_selectedListIds.length})'),
+        ),
+      ],
     );
   }
 }

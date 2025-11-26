@@ -265,7 +265,11 @@ class ImportRecipeSheet extends StatelessWidget {
         _showLoadingDialog(context);
       }
 
-      final importResult = await FozliImportService.importFozliFile(filePath);
+      // ✅ ADD THIS:
+      final importResult = await FozliImportService.importFozliFile(
+        filePath,
+        allowedType: 'recipe', // ✅ Only recipes on recipe page!
+      );
 
       if (context.mounted) {
         Navigator.pop(context); // Close loading
@@ -615,54 +619,51 @@ class ImportRecipeSheet extends StatelessWidget {
   }
 
   static void _handleImportResult(BuildContext context, ImportResult result) {
-    if (result.importedType == 'shopping_list') {
-      showDialog(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: const Row(
-            children: [
-              Icon(Icons.info, color: Colors.orange),
-              SizedBox(width: 12),
-              Text('Bevásárlólista importálva'),
-            ],
-          ),
-          content: const Text(
-            'Ez egy bevásárlólista volt, ezért a Bevásárlólista fülön lett hozzáadva.',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Rendben'),
-            ),
-          ],
-        ),
-      );
-      return;
-    }
-
+  if (!result.success) {
+    // ❌ ERROR - Show red error dialog
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         title: Row(
           children: [
-            Icon(
-              result.success ? Icons.check_circle : Icons.error,
-              color: result.success ? Colors.green : Colors.red,
-            ),
-            const SizedBox(width: 12),
-            Text(result.success ? 'Sikeres!' : 'Hiba'),
+            Icon(Icons.error_outline, color: Colors.red, size: 28),
+            SizedBox(width: 12),
+            Text('Hiba'),
           ],
         ),
         content: Text(result.message),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Rendben'),
+            child: Text('Rendben'),
           ),
         ],
       ),
     );
+    return;
   }
+
+  // ✅ SUCCESS - Show green success dialog
+  showDialog(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: Row(
+        children: [
+          Icon(Icons.check_circle, color: Colors.green, size: 28),
+          SizedBox(width: 12),
+          Text('Sikeres!'),
+        ],
+      ),
+      content: Text(result.message),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: Text('Rendben'),
+        ),
+      ],
+    ),
+  );
+}
 
   static void _handleAiImportResult(BuildContext context, AiImportResult result) {
     if (!result.success) {

@@ -1,4 +1,4 @@
-// screens/import_shopping_list_dialog.dart
+// screens/import_shopping_list_dialog.dart - FIXED VERSION
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
@@ -8,19 +8,34 @@ import '../services/ai_import_service.dart';
 import '../utils/app_colors.dart';
 
 class ImportShoppingListDialog {
-  static Future<void> show(BuildContext context, {required bool isPremium}) async {
+  static Future<void> show(
+    BuildContext context, {
+    required bool isPremium,
+    String? listId,
+  }) async {
     await showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      builder: (context) => ImportShoppingListSheet(isPremium: isPremium),
+      builder: (_) => ImportShoppingListSheet(
+        isPremium: isPremium,
+        listId: listId,
+        rootContext: context, // 👈 PASS PARENT CONTEXT!
+      ),
     );
   }
 }
 
 class ImportShoppingListSheet extends StatelessWidget {
   final bool isPremium;
+  final String? listId;
+  final BuildContext rootContext; // 🔥 THIS IS THE KEY!
 
-  const ImportShoppingListSheet({super.key, required this.isPremium});
+  const ImportShoppingListSheet({
+    super.key,
+    required this.isPremium,
+    this.listId,
+    required this.rootContext, // 🔥 REQUIRED!
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -51,8 +66,8 @@ class ImportShoppingListSheet extends StatelessWidget {
               title: const Text('.fozli fájl'),
               subtitle: const Text('Importálj korábban mentett listát'),
               onTap: () {
-                Navigator.pop(context);
-                _importFromFile(context);
+                Navigator.pop(context); // Close sheet
+                _importFromFile(rootContext, listId); // ✅ USE rootContext!
               },
             ),
             const Divider(),
@@ -91,7 +106,7 @@ class ImportShoppingListSheet extends StatelessWidget {
               onTap: isPremium
                   ? () {
                       Navigator.pop(context);
-                      _importFromAiText(context);
+                      _importFromAiText(rootContext, listId); // ✅
                     }
                   : null,
             ),
@@ -131,7 +146,7 @@ class ImportShoppingListSheet extends StatelessWidget {
               onTap: isPremium
                   ? () {
                       Navigator.pop(context);
-                      _showImageImportOptions(context);
+                      _showImageImportOptions(rootContext, listId); // ✅
                     }
                   : null,
             ),
@@ -169,7 +184,7 @@ class ImportShoppingListSheet extends StatelessWidget {
     );
   }
 
-  static Future<void> _importFromFile(BuildContext context) async {
+  static Future<void> _importFromFile(BuildContext context, String? listId) async {
     try {
       final result = await FilePicker.platform.pickFiles(
         type: FileType.any,
@@ -195,7 +210,11 @@ class ImportShoppingListSheet extends StatelessWidget {
         _showLoadingDialog(context);
       }
 
-      final importResult = await FozliImportService.importFozliFile(filePath);
+      final importResult = await FozliImportService.importFozliFile(
+        filePath,
+        listId: listId,
+        allowedType: 'shopping_list',
+      );
 
       if (context.mounted) {
         Navigator.pop(context); // Close loading
@@ -211,7 +230,7 @@ class ImportShoppingListSheet extends StatelessWidget {
     }
   }
 
-  static Future<void> _importFromAiText(BuildContext context) async {
+  static Future<void> _importFromAiText(BuildContext context, String? listId) async {
     final textController = TextEditingController();
     bool isFromFile = false;
 
@@ -283,7 +302,10 @@ class ImportShoppingListSheet extends StatelessWidget {
       _showLoadingDialog(context, message: 'AI feldolgozás...');
     }
 
-    final importResult = await AiImportService.importShoppingListFromText(result);
+    final importResult = await AiImportService.importShoppingListFromText(
+      result,
+      listId: listId,
+    );
 
     if (context.mounted) {
       Navigator.pop(context); // Close loading
@@ -291,7 +313,7 @@ class ImportShoppingListSheet extends StatelessWidget {
     }
   }
 
-  static Future<void> _showImageImportOptions(BuildContext context) async {
+  static Future<void> _showImageImportOptions(BuildContext context, String? listId) async {
     final option = await showModalBottomSheet<ImageSource>(
       context: context,
       builder: (context) => SafeArea(
@@ -324,7 +346,10 @@ class ImportShoppingListSheet extends StatelessWidget {
       _showLoadingDialog(context, message: 'AI feldolgozás...');
     }
 
-    final importResult = await AiImportService.importShoppingListFromImage(image.path);
+    final importResult = await AiImportService.importShoppingListFromImage(
+      image.path,
+      listId: listId,
+    );
 
     if (context.mounted) {
       Navigator.pop(context); // Close loading
@@ -355,24 +380,23 @@ class ImportShoppingListSheet extends StatelessWidget {
   }
 
   static void _handleImportResult(BuildContext context, ImportResult result) {
-    if (result.importedType == 'recipe') {
+    if (!result.success) {
+      // ❌ ERROR - Show red error dialog
       showDialog(
         context: context,
         builder: (context) => AlertDialog(
-          title: const Row(
+          title: Row(
             children: [
-              Icon(Icons.info, color: Colors.orange),
+              Icon(Icons.error_outline, color: Colors.red, size: 28),
               SizedBox(width: 12),
-              Text('Recept importálva'),
+              Text('Hiba'),
             ],
           ),
-          content: const Text(
-            'Ez egy recept volt, ezért a Receptek fülön lett hozzáadva.',
-          ),
+          content: Text(result.message),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: const Text('Rendben'),
+              child: Text('Rendben'),
             ),
           ],
         ),
@@ -380,24 +404,22 @@ class ImportShoppingListSheet extends StatelessWidget {
       return;
     }
 
+    // ✅ SUCCESS - Show green success dialog
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         title: Row(
           children: [
-            Icon(
-              result.success ? Icons.check_circle : Icons.error,
-              color: result.success ? Colors.green : Colors.red,
-            ),
-            const SizedBox(width: 12),
-            Text(result.success ? 'Sikeres!' : 'Hiba'),
+            Icon(Icons.check_circle, color: Colors.green, size: 28),
+            SizedBox(width: 12),
+            Text('Sikeres!'),
           ],
         ),
         content: Text(result.message),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Rendben'),
+            child: Text('Rendben'),
           ),
         ],
       ),

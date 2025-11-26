@@ -73,6 +73,10 @@
     <key>UTExportedTypeDeclarations</key>
     <array>
         <dict>
+			<key>NSMicrophoneUsageDescription</key>
+			<string>Mikrofon szükséges a diktáláshoz</string>
+			<key>NSSpeechRecognitionUsageDescription</key>
+			<string>Beszédfelismerés szükséges</string>
             <key>UTTypeIdentifier</key>
             <string>com.fozli.recipe</string>
             <key>UTTypeDescription</key>

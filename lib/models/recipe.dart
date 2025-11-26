@@ -409,16 +409,24 @@ class Recipe {
 
     if (raw.contains('főétel') || raw.contains('main') || raw.contains('chicken') ||
         raw.contains('csirke') || raw.contains('meat') || raw.contains('pasta') ||
-        raw.contains('tészta')) return 'Főétel';
+        raw.contains('tészta')) {
+      return 'Főétel';
+    }
     if (raw.contains('leves') || raw.contains('soup') || raw.contains('broth')) return 'Leves';
     if (raw.contains('desszert') || raw.contains('dessert') || raw.contains('cake') ||
         raw.contains('sweet') || raw.contains('csoki') || raw.contains('süti') ||
-        raw.contains('cookie') || raw.contains('torta')) return 'Desszert';
+        raw.contains('cookie') || raw.contains('torta')) {
+      return 'Desszert';
+    }
     if (raw.contains('péksütemény') || raw.contains('bread') || raw.contains('kenyér') ||
-        raw.contains('baking') || raw.contains('pastry')) return 'Péksütemény';
+        raw.contains('baking') || raw.contains('pastry')) {
+      return 'Péksütemény';
+    }
     if (raw.contains('saláta') || raw.contains('salad')) return 'Saláta';
     if (raw.contains('ital') || raw.contains('drink') || raw.contains('beverage') ||
-        raw.contains('smoothie') || raw.contains('cocktail')) return 'Ital';
+        raw.contains('smoothie') || raw.contains('cocktail')) {
+      return 'Ital';
+    }
 
     return 'Egyéb';
   }

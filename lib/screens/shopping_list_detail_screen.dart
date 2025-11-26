@@ -1,4 +1,5 @@
-// screens/shopping_list_screen_updated.dart
+// screens/shopping_list_detail_screen.dart
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -6,19 +7,27 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:share_plus/share_plus.dart';
 import '../models/shopping_list_item.dart';
+import '../models/shopping_list.dart';
 import '../utils/app_colors.dart';
+import '../services/ai_import_service.dart';
 import 'import_shopping_list_dialog.dart';
+import 'google_cloud_voice_recording_screen.dart';
 
-class ShoppingListScreen extends StatefulWidget {
-  final bool isPremium; // Add this to track premium status
+class ShoppingListDetailScreen extends StatefulWidget {
+  final ShoppingList shoppingList;
+  final bool isPremium;
 
-  const ShoppingListScreen({super.key, this.isPremium = true}); //PREMIUM FEATURES ENABLED FOR DEV TESTINGS
+  const ShoppingListDetailScreen({
+    super.key,
+    required this.shoppingList,
+    this.isPremium = true,
+  });
 
   @override
-  State<ShoppingListScreen> createState() => _ShoppingListScreenState();
+  State<ShoppingListDetailScreen> createState() => _ShoppingListDetailScreenState();
 }
 
-class _ShoppingListScreenState extends State<ShoppingListScreen> {
+class _ShoppingListDetailScreenState extends State<ShoppingListDetailScreen> {
   Map<String, dynamic> _convertTimestampsToStrings(Map<String, dynamic> data) {
     final result = <String, dynamic>{};
     
@@ -89,7 +98,7 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
   Future<void> _shareAsText(List<ShoppingListItem> items) async {
     try {
       final StringBuffer buffer = StringBuffer();
-      buffer.writeln('🛒 Bevásárlólista');
+      buffer.writeln('🛒 ${widget.shoppingList.name}');
       buffer.writeln();
       
       final unchecked = items.where((item) => !item.checked).toList();
@@ -122,7 +131,7 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
 
       await Share.share(
         buffer.toString(),
-        subject: 'Bevásárlólista',
+        subject: widget.shoppingList.name,
       );
     } catch (e) {
       if (mounted) {
@@ -139,6 +148,7 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
         final data = item.toMap();
         data.remove('userId');
         data.remove('id');
+        data.remove('listId');
         
         // Convert all Timestamps to ISO8601 strings
         return _convertTimestampsToStrings(data);
@@ -147,6 +157,7 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
       final jsonData = jsonEncode({
         'type': 'shopping_list',
         'version': '1.0',
+        'listName': widget.shoppingList.name,
         'items': itemsData,
         'exportedAt': DateTime.now().toIso8601String(),
       });
@@ -159,7 +170,7 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
 
       await Share.shareXFiles(
         [XFile(filePath)],
-        subject: 'Bevásárlólista',
+        subject: widget.shoppingList.name,
         text: 'Főzli bevásárlólista',
       );
 
@@ -271,6 +282,7 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
         final item = ShoppingListItem(
           id: '',
           userId: userId,
+          listId: widget.shoppingList.id, // Add listId
           name: nameController.text.trim(),
           quantity: quantityController.text.trim(),
           unit: selectedUnit,
@@ -278,7 +290,7 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
           createdAt: DateTime.now(),
         );
 
-        await FirebaseFirestore.instance.collection('shoppingList').add(item.toMap());
+        await FirebaseFirestore.instance.collection('shoppingListItems').add(item.toMap());
       } catch (e) {
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -375,7 +387,7 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
     if (result == true && nameController.text.isNotEmpty) {
       try {
         await FirebaseFirestore.instance
-            .collection('shoppingList')
+            .collection('shoppingListItems')
             .doc(item.id)
             .update({
           'name': nameController.text.trim(),
@@ -394,14 +406,14 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
 
   Future<void> _toggleItem(ShoppingListItem item) async {
     await FirebaseFirestore.instance
-        .collection('shoppingList')
+        .collection('shoppingListItems')
         .doc(item.id)
         .update({'checked': !item.checked});
   }
 
   Future<void> _deleteItem(String itemId) async {
     await FirebaseFirestore.instance
-        .collection('shoppingList')
+        .collection('shoppingListItems')
         .doc(itemId)
         .delete();
   }
@@ -429,8 +441,9 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
     if (confirm == true) {
       try {
         final snapshot = await FirebaseFirestore.instance
-            .collection('shoppingList')
+            .collection('shoppingListItems')
             .where('userId', isEqualTo: userId)
+            .where('listId', isEqualTo: widget.shoppingList.id)
             .where('checked', isEqualTo: true)
             .get();
 
@@ -455,15 +468,142 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
     }
   }
 
+  // NEW: Voice import method
+  Future<void> _importFromVoice(BuildContext context) async {
+  if (!widget.isPremium) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Ez a funkció csak PRO verzióban elérhető'),
+        backgroundColor: Colors.orange,
+      ),
+    );
+    return;
+  }
+
+  try {
+    // Get API key from .env (same key you use for Gemini/Vertex AI)
+    final apiKey = dotenv.env['GEMINI_API_KEY'] ?? '';
+    
+    if (apiKey.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('API kulcs nincs beállítva'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    final transcription = await Navigator.push<String>(
+      context,
+      MaterialPageRoute(
+        builder: (context) => GoogleCloudVoiceRecordingScreen(
+          apiKey: apiKey, // Pass your Gemini API key
+        ),
+      ),
+    );
+
+    if (transcription == null || transcription.trim().isEmpty) return;
+
+    if (context.mounted) {
+      _showLoadingDialog(context, message: 'AI feldolgozás...');
+    }
+
+    final importResult = await AiImportService.importShoppingListFromText(
+      transcription,
+      listId: widget.shoppingList.id,
+    );
+
+    if (context.mounted) {
+      Navigator.pop(context); // Close loading
+      _showAiImportResult(context, importResult);
+    }
+  } catch (e) {
+    if (context.mounted) {
+      Navigator.pop(context); // Close loading if open
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Hiba: $e')),
+      );
+    }
+  }
+}
+
+  void _showLoadingDialog(BuildContext context, {String? message}) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => Center(
+        child: Card(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const CircularProgressIndicator(color: AppColors.coral),
+                const SizedBox(height: 16),
+                Text(message ?? 'Feldolgozás...'),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showAiImportResult(BuildContext context, AiImportResult result) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Row(
+          children: [
+            Icon(
+              result.success ? Icons.check_circle : Icons.error,
+              color: result.success ? Colors.green : Colors.red,
+            ),
+            const SizedBox(width: 12),
+            Text(result.success ? 'Sikeres!' : 'Hiba'),
+          ],
+        ),
+        content: Text(result.message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Rendben'),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final userId = FirebaseAuth.instance.currentUser?.uid;
+    final color = Color(int.parse('FF${widget.shoppingList.color}', radix: 16));
 
     if (userId == null) {
-      return const Center(child: Text('Nincs bejelentkezve'));
+      return const Scaffold(
+        body: Center(child: Text('Nincs bejelentkezve')),
+      );
     }
 
     return Scaffold(
+      appBar: AppBar(
+        title: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(widget.shoppingList.emoji),
+            const SizedBox(width: 8),
+            Flexible(
+              child: Text(
+                widget.shoppingList.name,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+        ),
+        backgroundColor: color,
+        foregroundColor: Colors.white,
+      ),
       body: Column(
         children: [
           // Always visible import and share buttons
@@ -475,8 +615,9 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
             ),
             child: StreamBuilder<QuerySnapshot>(
               stream: FirebaseFirestore.instance
-                  .collection('shoppingList')
+                  .collection('shoppingListItems')
                   .where('userId', isEqualTo: userId)
+                  .where('listId', isEqualTo: widget.shoppingList.id)
                   .snapshots(),
               builder: (context, snapshot) {
                 final items = snapshot.hasData
@@ -496,25 +637,29 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
                   children: [
                     TextButton.icon(
                       onPressed: () {
-                        ImportShoppingListDialog.show(context, isPremium: widget.isPremium);
+                        ImportShoppingListDialog.show(
+                          context,
+                          isPremium: widget.isPremium,
+                          listId: widget.shoppingList.id,
+                        );
                       },
                       icon: const Icon(Icons.upload_file, size: 20),
                       label: const Text('Importálás'),
-                      style: TextButton.styleFrom(foregroundColor: AppColors.coral),
+                      style: TextButton.styleFrom(foregroundColor: color),
                     ),
                     if (hasItems)
                       TextButton.icon(
                         onPressed: () => _showShareOptions(items),
                         icon: const Icon(Icons.share, size: 20),
                         label: const Text('Megosztás'),
-                        style: TextButton.styleFrom(foregroundColor: AppColors.coral),
+                        style: TextButton.styleFrom(foregroundColor: color),
                       ),
                     if (hasCheckedItems)
                       TextButton.icon(
                         onPressed: () => _clearCheckedItems(context, userId),
                         icon: const Icon(Icons.delete_sweep, size: 20),
                         label: const Text('Törlés'),
-                        style: TextButton.styleFrom(foregroundColor: AppColors.coral),
+                        style: TextButton.styleFrom(foregroundColor: color),
                       ),
                   ],
                 );
@@ -525,8 +670,9 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
           Expanded(
             child: StreamBuilder<QuerySnapshot>(
               stream: FirebaseFirestore.instance
-                  .collection('shoppingList')
+                  .collection('shoppingListItems')
                   .where('userId', isEqualTo: userId)
+                  .where('listId', isEqualTo: widget.shoppingList.id)
                   .snapshots(),
               builder: (context, snapshot) {
                 if (snapshot.hasError) {
@@ -556,7 +702,7 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
                         ),
                         const SizedBox(height: 16),
                         Text(
-                          'A bevásárlólista üres',
+                          'A lista üres',
                           style: TextStyle(
                             fontSize: 18,
                             color: Colors.grey[600],
@@ -564,7 +710,7 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
                         ),
                         const SizedBox(height: 8),
                         Text(
-                          'Adj hozzá tételeket vagy használd a "Listához" gombot a recepteknél!',
+                          'Adj hozzá tételeket a + gombbal!',
                           textAlign: TextAlign.center,
                           style: TextStyle(color: Colors.grey[500]),
                         ),
@@ -594,7 +740,7 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
                           leading: Checkbox(
                             value: item.checked,
                             onChanged: (_) => _toggleItem(item),
-                            activeColor: AppColors.coral,
+                            activeColor: color,
                           ),
                           title: Text(
                             item.name,
@@ -618,7 +764,7 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
                           trailing: IconButton(
                             icon: const Icon(Icons.edit, size: 20),
                             onPressed: () => _editItem(context, item),
-                            color: AppColors.coral,
+                            color: color,
                           ),
                           onTap: () => _toggleItem(item),
                         ),
@@ -631,10 +777,28 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () => _addItem(context),
-        backgroundColor: AppColors.coral,
-        child: const Icon(Icons.add, color: Colors.white),
+      floatingActionButton: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Voice button (microphone)
+          if (widget.isPremium)
+            FloatingActionButton(
+              onPressed: () => _importFromVoice(context),
+              backgroundColor: Colors.white,
+              foregroundColor: color,
+              heroTag: 'voice_fab',
+              child: const Icon(Icons.mic),
+            ),
+          if (widget.isPremium) const SizedBox(height: 16),
+          // Add button (plus)
+          FloatingActionButton(
+            onPressed: () => _addItem(context),
+            backgroundColor: color,
+            foregroundColor: Colors.white,
+            heroTag: 'add_fab',
+            child: const Icon(Icons.add),
+          ),
+        ],
       ),
     );
   }

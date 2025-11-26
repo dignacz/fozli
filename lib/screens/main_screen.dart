@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../services/auth_service.dart';
 import 'dashboard_screen.dart';
 import 'recipe_list_screen.dart';
-import 'shopping_list_screen.dart';
+import 'shopping_lists_overview_screen.dart';
 import 'calendar_screen.dart';
 import '../utils/app_colors.dart';
 
@@ -26,7 +26,7 @@ class _MainScreenState extends State<MainScreen> {
   final List<String> _titles = [
     'Főzli',
     'Receptek',
-    'Bevásárlólista',
+    'Bevásárlólisták',
     'Főzőnaptár',
   ];
 
@@ -38,7 +38,7 @@ class _MainScreenState extends State<MainScreen> {
     final screens = [
       DashboardScreen(onNavigate: _onTabChanged), // Pass callback
       const RecipeListScreen(),
-      const ShoppingListScreen(),
+      const ShoppingListsOverviewScreen(),
       const CalendarScreen(),
     ];
 

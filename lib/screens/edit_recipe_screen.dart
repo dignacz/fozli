@@ -199,7 +199,7 @@ class _EditRecipeScreenState extends State<EditRecipeScreen> {
 
             // Category Selector
             DropdownButtonFormField<String>(
-              value: _selectedCategory,
+              initialValue: _selectedCategory,
               decoration: const InputDecoration(
                 labelText: 'Kategória',
                 border: OutlineInputBorder(),
@@ -373,7 +373,7 @@ class _EditRecipeScreenState extends State<EditRecipeScreen> {
                         const SizedBox(width: 8),
                         Expanded(
                           child: DropdownButtonFormField<String>(
-                            value: ingredient.selectedUnit,
+                            initialValue: ingredient.selectedUnit,
                             decoration: const InputDecoration(
                               labelText: 'Egység',
                               border: OutlineInputBorder(),

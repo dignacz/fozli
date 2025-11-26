@@ -1,9 +1,10 @@
-// services/ai_import_service.dart
+// services/ai_import_service.dart - FIXED FOR VOICE INPUT
 import 'dart:convert';
 import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
 import '../models/recipe.dart';
 import '../models/shopping_list_item.dart';
 
@@ -166,8 +167,11 @@ class AiImportService {
     }
   }
 
-  /// Import shopping list from text
-  static Future<AiImportResult> importShoppingListFromText(String text) async {
+  /// Import shopping list from text (FIXED FOR VOICE INPUT!)
+  static Future<AiImportResult> importShoppingListFromText(
+    String text, {
+    String? listId,
+  }) async {
     if (_apiKey == null) {
       return AiImportResult(
         success: false,
@@ -176,6 +180,8 @@ class AiImportService {
     }
 
     try {
+      debugPrint('🎤 Voice input received: "$text"');
+      
       final userId = FirebaseAuth.instance.currentUser?.uid;
       if (userId == null) {
         return AiImportResult(
@@ -187,6 +193,8 @@ class AiImportService {
       final prompt = _getShoppingListExtractionPrompt(text);
       final response = await _callGeminiApi(prompt);
 
+      debugPrint('🤖 AI raw response: $response');
+
       if (response == null) {
         return AiImportResult(
           success: false,
@@ -195,37 +203,84 @@ class AiImportService {
       }
 
       // Parse the JSON response
-      final data = jsonDecode(response) as Map<String, dynamic>;
-      final items = data['items'] as List<dynamic>?;
+      Map<String, dynamic> data;
+      try {
+        data = jsonDecode(response) as Map<String, dynamic>;
+      } catch (e) {
+        debugPrint('❌ JSON parse error: $e');
+        debugPrint('Response was: $response');
+        return AiImportResult(
+          success: false,
+          message: 'Hibás válasz formátum az AI-tól',
+        );
+      }
 
-      if (items == null || items.isEmpty) {
+      // Check for error response
+      if (data.containsKey('error')) {
+        debugPrint('❌ AI returned error: ${data['error']}');
         return AiImportResult(
           success: false,
           message: 'Nem található bevásárlólista adat',
         );
       }
 
+      final items = data['items'] as List<dynamic>?;
+
+      if (items == null || items.isEmpty) {
+        debugPrint('❌ No items found in response');
+        return AiImportResult(
+          success: false,
+          message: 'Nem található bevásárlólista adat',
+        );
+      }
+
+      debugPrint('✅ Found ${items.length} items');
+
       // Create shopping list items
       final batch = FirebaseFirestore.instance.batch();
       final shoppingItems = <ShoppingListItem>[];
 
       for (var itemData in items) {
+        final name = itemData['name']?.toString() ?? '';
+        final quantity = itemData['quantity']?.toString() ?? '1';
+        final unit = itemData['unit']?.toString() ?? 'db';
+        
+        debugPrint('  📦 Item: $name ($quantity $unit)');
+
+        // Create item with listId if provided
+        final itemMap = {
+          'userId': userId,
+          'name': name,
+          'quantity': quantity,
+          'unit': unit,
+          'checked': false,
+          'createdAt': FieldValue.serverTimestamp(),
+        };
+        
+        // Add listId if provided (for the current shopping list)
+        if (listId != null && listId.isNotEmpty) {
+          itemMap['listId'] = listId;
+          debugPrint('    ✅ Assigning to list: $listId');
+        }
+
+        final docRef = FirebaseFirestore.instance.collection('shoppingListItems').doc();
+        batch.set(docRef, itemMap);
+        
         final item = ShoppingListItem(
-          id: '',
+          id: docRef.id,
           userId: userId,
-          name: itemData['name'] ?? '',
-          quantity: itemData['quantity']?.toString() ?? '',
-          unit: itemData['unit'] ?? 'db',
+          name: name,
+          quantity: quantity,
+          unit: unit,
           checked: false,
           createdAt: DateTime.now(),
         );
-
-        final docRef = FirebaseFirestore.instance.collection('shoppingList').doc();
-        batch.set(docRef, item.toMap());
-        shoppingItems.add(item.copyWith(id: docRef.id));
+        shoppingItems.add(item);
       }
 
       await batch.commit();
+
+      debugPrint('✅ Successfully saved ${items.length} items to Firestore');
 
       return AiImportResult(
         success: true,
@@ -234,6 +289,7 @@ class AiImportService {
         importedData: shoppingItems,
       );
     } catch (e) {
+      debugPrint('❌ Exception in importShoppingListFromText: $e');
       return AiImportResult(
         success: false,
         message: 'Hiba: $e',
@@ -242,7 +298,10 @@ class AiImportService {
   }
 
   /// Import shopping list from image (OCR)
-  static Future<AiImportResult> importShoppingListFromImage(String imagePath) async {
+  static Future<AiImportResult> importShoppingListFromImage(
+    String imagePath, {
+    String? listId,
+  }) async {
     if (_apiKey == null) {
       return AiImportResult(
         success: false,
@@ -276,6 +335,15 @@ class AiImportService {
 
       // Parse the JSON response
       final data = jsonDecode(response) as Map<String, dynamic>;
+      
+      // Check for error response
+      if (data.containsKey('error')) {
+        return AiImportResult(
+          success: false,
+          message: 'Nem található bevásárlólista adat a képen',
+        );
+      }
+      
       final items = data['items'] as List<dynamic>?;
 
       if (items == null || items.isEmpty) {
@@ -294,13 +362,13 @@ class AiImportService {
           id: '',
           userId: userId,
           name: itemData['name'] ?? '',
-          quantity: itemData['quantity']?.toString() ?? '',
+          quantity: itemData['quantity']?.toString() ?? '1',
           unit: itemData['unit'] ?? 'db',
           checked: false,
           createdAt: DateTime.now(),
         );
 
-        final docRef = FirebaseFirestore.instance.collection('shoppingList').doc();
+        final docRef = FirebaseFirestore.instance.collection('shoppingListItems').doc();
         batch.set(docRef, item.toMap());
         shoppingItems.add(item.copyWith(id: docRef.id));
       }
@@ -374,29 +442,55 @@ If NOT a valid recipe, return: {"error": "not_a_recipe"}
 ''';
   }
 
+  // 🎤 FIXED FOR VOICE INPUT!
   static String _getShoppingListExtractionPrompt(String text) {
     return '''
-You are a strict shopping list extraction assistant. Your ONLY job is to extract shopping list items.
+You are a shopping list extraction assistant. Extract shopping items from ANY format.
 
-CRITICAL RULES:
-1. ONLY extract if the input contains a CLEAR shopping/grocery list
-2. If the input is NOT a shopping list (recipe, story, random text, etc.), return: {"error": "not_a_shopping_list"}
-3. Do NOT make up items
-4. Extract quantities and units when available
+ACCEPT THESE FORMATS:
+✅ List format: "tej, kenyér, tojás"
+✅ Natural speech: "tej egy liter kenyér három tojás"
+✅ Sentence: "kellene tej és kenyér meg tojás is"
+✅ Voice input: "vegyünk tejet kenyeret és tojást"
+✅ With quantities: "2 liter tej 1 kenyér 6 tojás"
 
-Input text: $text
+YOUR JOB: Extract EVERY food/grocery item mentioned!
 
-If this is a valid shopping list, extract and return ONLY this JSON (no other text):
+Input text: "$text"
+
+Return ONLY valid JSON (no markdown, no code blocks):
 {
   "items": [
-    {"name": "Item name in Hungarian", "quantity": "2", "unit": "kg"},
-    {"name": "Item name", "quantity": "", "unit": "db"}
+    {"name": "Tej", "quantity": "1", "unit": "liter"},
+    {"name": "Kenyér", "quantity": "1", "unit": "db"},
+    {"name": "Tojás", "quantity": "3", "unit": "db"}
   ]
 }
 
-Valid units: db, csomag, doboz, kg, g, l, dl, ml
+QUANTITY RULES:
+- "egy liter" → "1 liter"
+- "három" → "3"
+- "2 kg" → "2 kg"
+- "egy" → "1"
+- No quantity mentioned → "1" and unit "db"
 
-If NOT a valid shopping list, return: {"error": "not_a_shopping_list"}
+COMMON UNITS: db, csomag, doboz, kg, g, liter, dl, ml, csomag
+
+IMPORTANT: 
+- Extract items even if not in list format!
+- If you find ANY food/grocery items, extract them!
+- Use "db" (darab) as default unit if not specified
+- Use "1" as default quantity if not specified
+- DO NOT return error - try your best to find items!
+
+Examples:
+Input: "tej kenyér tojás"
+Output: {"items": [{"name": "Tej", "quantity": "1", "unit": "db"}, {"name": "Kenyér", "quantity": "1", "unit": "db"}, {"name": "Tojás", "quantity": "1", "unit": "db"}]}
+
+Input: "tej egy liter kenyér három tojás"
+Output: {"items": [{"name": "Tej", "quantity": "1", "unit": "liter"}, {"name": "Kenyér", "quantity": "1", "unit": "db"}, {"name": "Tojás", "quantity": "3", "unit": "db"}]}
+
+Now extract from the input text above. Return ONLY the JSON, nothing else!
 ''';
   }
 
@@ -441,7 +535,7 @@ If NOT a valid shopping list, return: {"error": "not_a_shopping_list"}
       }
       return null;
     } catch (e) {
-      print('API call error: $e');
+      debugPrint('API call error: $e');
       return null;
     }
   }
@@ -493,7 +587,7 @@ If NOT a valid shopping list, return: {"error": "not_a_shopping_list"}
       }
       return null;
     } catch (e) {
-      print('API call error: $e');
+      debugPrint('API call error: $e');
       return null;
     }
   }
