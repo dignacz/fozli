@@ -3,14 +3,18 @@
 <plist version="1.0">
 <dict>
 	<key>CFBundleLocalizations</key>
-		<array>
-    		<string>hu</string>
-    		<string>en</string>
-		</array>
+	<array>
+		<string>hu</string>
+		<string>en</string>
+	</array>
 	<key>NSPhotoLibraryUsageDescription</key>
-		<string>Engedélyezd a hozzáférést, hogy fotót tölthess fel a recepthez</string>
+	<string>Engedélyezd a hozzáférést, hogy fotót tölthess fel a recepthez</string>
 	<key>NSCameraUsageDescription</key>
-		<string>Engedélyezd a kamerát, hogy fotót készíthess a receptről</string>
+	<string>Engedélyezd a kamerát, hogy fotót készíthess a receptről</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Mikrofon szükséges a diktáláshoz</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Beszédfelismerés szükséges</string>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
@@ -53,48 +57,52 @@
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
-	<!-- ADD THIS: Register .fozli file type -->
-    <key>CFBundleDocumentTypes</key>
-    <array>
-        <dict>
-            <key>CFBundleTypeName</key>
-            <string>Fozli Recipe</string>
-            <key>LSHandlerRank</key>
-            <string>Owner</string>
-            <key>CFBundleTypeRole</key>
-            <string>Editor</string>
-            <key>LSItemContentTypes</key>
-            <array>
-                <string>com.fozli.recipe</string>
-            </array>
-        </dict>
-    </array>
-    
-    <key>UTExportedTypeDeclarations</key>
-    <array>
-        <dict>
-			<key>NSMicrophoneUsageDescription</key>
-			<string>Mikrofon szükséges a diktáláshoz</string>
-			<key>NSSpeechRecognitionUsageDescription</key>
-			<string>Beszédfelismerés szükséges</string>
-            <key>UTTypeIdentifier</key>
-            <string>com.fozli.recipe</string>
-            <key>UTTypeDescription</key>
-            <string>Fozli Recipe File</string>
-            <key>UTTypeConformsTo</key>
-            <array>
-                <string>public.data</string>
-                <string>public.content</string>
-            </array>
-            <key>UTTypeTagSpecification</key>
-            <dict>
-                <key>public.filename-extension</key>
-                <array>
-                    <string>fozli</string>
-                </array>
-            </dict>
-        </dict>
-    </array>
 	<true/>
+	
+	<!-- NEW: Timer notification background modes -->
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>fetch</string>
+		<string>remote-notification</string>
+	</array>
+	
+	<!-- Existing: Register .fozli file type -->
+	<key>CFBundleDocumentTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeName</key>
+			<string>Fozli Recipe</string>
+			<key>LSHandlerRank</key>
+			<string>Owner</string>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>com.fozli.recipe</string>
+			</array>
+		</dict>
+	</array>
+	
+	<key>UTExportedTypeDeclarations</key>
+	<array>
+		<dict>
+			<key>UTTypeIdentifier</key>
+			<string>com.fozli.recipe</string>
+			<key>UTTypeDescription</key>
+			<string>Fozli Recipe File</string>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.data</string>
+				<string>public.content</string>
+			</array>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>fozli</string>
+				</array>
+			</dict>
+		</dict>
+	</array>
 </dict>
 </plist>

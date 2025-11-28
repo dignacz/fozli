@@ -1,9 +1,9 @@
 name: fozli
-description: "A new Flutter project."
+description: "A te konyhai agyad."
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev
-
+#Sound Effect by <a href="https://pixabay.com/users/universfield-28281460/?utm_source=link-attribution&utm_medium=referral&utm_campaign=music&utm_content=133355">Universfield</a> from <a href="https://pixabay.com/sound-effects//?utm_source=link-attribution&utm_medium=referral&utm_campaign=music&utm_content=133355">Pixabay</a>
 # The following defines the version and build number for your application.
 # A version number is three numbers separated by dots, like 1.2.43
 # followed by an optional build number separated by a +.
@@ -48,6 +48,9 @@ dependencies:
   permission_handler: ^11.3.1
   http: ^1.2.0
   uuid: ^4.0.0
+  provider: ^6.1.1
+  audioplayers: ^6.0.0
+  flutter_local_notifications: ^17.0.0
 
   flutter_localizations:
     sdk: flutter
@@ -72,6 +75,7 @@ flutter:
 
   assets:
     - .env
+    - assets/sounds/timer_complete.mp3
 
   # The following line ensures that the Material Icons font is
   # included with your application, so that you can use the icons in

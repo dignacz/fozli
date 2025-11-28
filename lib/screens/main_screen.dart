@@ -1,10 +1,12 @@
 // screens/main_screen.dart
 import 'package:flutter/material.dart';
 import '../services/auth_service.dart';
+import '../widgets/active_timer_icon_button.dart';
 import 'dashboard_screen.dart';
 import 'recipe_list_screen.dart';
 import 'shopping_lists_overview_screen.dart';
 import 'calendar_screen.dart';
+import 'timer_screen.dart';
 import '../utils/app_colors.dart';
 
 class MainScreen extends StatefulWidget {
@@ -26,6 +28,7 @@ class _MainScreenState extends State<MainScreen> {
   final List<String> _titles = [
     'Főzli',
     'Receptek',
+    'Időzítők',
     'Bevásárlólisták',
     'Főzőnaptár',
   ];
@@ -38,6 +41,7 @@ class _MainScreenState extends State<MainScreen> {
     final screens = [
       DashboardScreen(onNavigate: _onTabChanged), // Pass callback
       const RecipeListScreen(),
+      const TimerScreen(),
       const ShoppingListsOverviewScreen(),
       const CalendarScreen(),
     ];
@@ -48,6 +52,11 @@ class _MainScreenState extends State<MainScreen> {
         backgroundColor: AppColors.coral,
         foregroundColor: Colors.white,
         actions: [
+          // Active timer icon - shows when timers are running
+          const ActiveTimerIconButton(
+            iconColor: Colors.white,
+          ),
+          // Logout button
           IconButton(
             icon: const Icon(Icons.logout),
             onPressed: () async {
@@ -72,6 +81,10 @@ class _MainScreenState extends State<MainScreen> {
           BottomNavigationBarItem(
             icon: Icon(Icons.restaurant_menu),
             label: 'Receptek',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.timer),
+            label: 'Időzítők',
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.shopping_cart),

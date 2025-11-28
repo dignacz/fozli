@@ -274,6 +274,7 @@ class _CollectionDetailScreenState extends State<CollectionDetailScreen> {
             ),
         ],
       ),
+      backgroundColor: const Color(0xFFF5F5F5),
       body: Column(
         children: [
           // Search Bar + Sort buttons (merged into one row)
@@ -538,6 +539,7 @@ class _CollectionDetailScreenState extends State<CollectionDetailScreen> {
 
     return Card(
       margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+      color: Colors.white,
       child: InkWell(
         onTap: () {
           Navigator.push(

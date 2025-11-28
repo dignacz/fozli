@@ -298,6 +298,7 @@ class _ShoppingListsOverviewScreenState extends State<ShoppingListsOverviewScree
     }
 
     return Scaffold(
+      backgroundColor: const Color(0xFFF5F5F5),
       body: StreamBuilder<QuerySnapshot>(
         stream: FirebaseFirestore.instance
             .collection('shoppingLists')
@@ -354,6 +355,7 @@ class _ShoppingListsOverviewScreenState extends State<ShoppingListsOverviewScree
 
               if (visibleLists.isEmpty) {
                 return Center(
+                  
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
@@ -433,6 +435,7 @@ class _ShoppingListsOverviewScreenState extends State<ShoppingListsOverviewScree
 
         return Card(
           margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+          color: Colors.white,
           child: InkWell(
             onTap: () {
               Navigator.push(

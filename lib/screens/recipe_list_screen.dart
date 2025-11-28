@@ -226,6 +226,7 @@ class _RecipeListScreenState extends State<RecipeListScreen> {
     }
 
     return Scaffold(
+      backgroundColor: const Color(0xFFF5F5F5),
       body: Column(
         children: [
           // View mode toggle
@@ -587,6 +588,7 @@ class _RecipeListScreenState extends State<RecipeListScreen> {
 
     return Card(
       margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+      color: Colors.white,
       child: InkWell(
         onTap: () {
           Navigator.push(
@@ -721,6 +723,7 @@ class _RecipeListScreenState extends State<RecipeListScreen> {
 
     return Card(
       margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+      color: Colors.white,
       child: InkWell(
         onTap: () {
           Navigator.push(
